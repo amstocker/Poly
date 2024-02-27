@@ -21,18 +21,23 @@ const TEST: &str = r#"
 
 
 fn main() {
-    use crate::vecpoly::Lens;
+    use crate::vecpoly::{Lens, Delegation};
 
     let lens1 = Lens {
         source: 0,
         target: 1,
-        data: vec![(6, 5)]
+        data: vec![
+            Delegation { from: 6, to: 5 }
+        ]
     };
 
     let lens2 = Lens {
         source: 1,
         target: 2,
-        data: vec![(7, 6), (8, 6)]
+        data: vec![
+            Delegation { from: 7, to: 6 },
+            Delegation { from: 8, to: 6 }
+        ]
     };
 
     print!("{:?}", lens1.compose(lens2));

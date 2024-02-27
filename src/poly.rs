@@ -9,8 +9,12 @@ where
   M: Mutation
 {
   fn source(&self) -> S;
+
   fn target(&self) -> S;
-  fn delegate(&self, mutation: M) -> Option<M>;
+
+  // Delegates from a mutation based at the target state to a mutation based at the source state.
+  fn delegate_from(&self, mutation: M) -> Option<M>;
+
   fn compose(&self, other: Self) -> Self;
 }
 
@@ -20,5 +24,6 @@ where
   M: Mutation
 {
   fn mutations(&self, state: S) -> impl Iterator<Item = M>;
+
   fn base(&self, mutation: M) -> S;
 }
