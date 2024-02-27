@@ -2,7 +2,7 @@ mod parse;
 mod poly;
 mod vecpoly;
 
-use vecpoly::*;
+use crate::poly::Lens;
 
 
 const TEST: &str = r#"
@@ -21,14 +21,19 @@ const TEST: &str = r#"
 
 
 fn main() {
+    use crate::vecpoly::Lens;
 
-    let lens1 = poly::Lens::new(0, 1, Transformation {
-        data: vec![(MutationIndex { base: 1, index: 6 }, MutationIndex { base: 0, index: 5 })]
-    });
+    let lens1 = Lens {
+        source: 0,
+        target: 1,
+        data: vec![(6, 5)]
+    };
 
-    let lens2 = poly::Lens::new(1, 2, Transformation {
-        data: vec![(MutationIndex { base: 2, index: 7 }, MutationIndex { base: 1, index: 6 })]
-    });
+    let lens2 = Lens {
+        source: 1,
+        target: 2,
+        data: vec![(7, 6), (8, 6)]
+    };
 
     print!("{:?}", lens1.compose(lens2));
 }
