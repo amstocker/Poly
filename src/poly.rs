@@ -1,48 +1,57 @@
 use std::marker::PhantomData;
 
 
-pub trait State {}
 
-pub trait Mutation {}
+// TODO: Context is responsible for creation of new data...
+// for example lenses should deal with references to actions, because actions can also be sequences of steps.
+// however composition of lenses should only create new delegations?
+// ... so basically Context is in charge of memory management.
+pub trait Context<S, A> {
+  fn mutations(&self, state: S) -> impl Iterator<Item = A>;
+  fn base(&self, action: A) -> S;
+}
+
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub struct Delegation<M> where M: Mutation {
-  pub from: M,
-  pub to: M
+pub struct Delegation<A> {
+  pub from: A,
+  pub to: A
 }
 
 #[derive(Debug)]
-pub struct Lens<S, M, D> {
+pub struct Lens<S, D> {
   pub source: S,
   pub target: S,
   pub data: D,
-  _dummy: PhantomData<M>
 }
 
-impl<'a, S, M, D> Lens<S, M, D>
-where
-  S: State + Copy,
-  M: 'a + Mutation + Eq + Copy,
-  D: 'a + FromIterator<Delegation<M>>,
-  &'a D: IntoIterator<Item = &'a Delegation<M>>
-{
+impl<S, D> Lens<S, D> {
   pub fn new(source: S, target: S, data: D) -> Self {
     Self {
         source,
         target,
         data,
-        _dummy: PhantomData,
     }
   }
 
-  pub fn delegate_from(&'a self, mutation: M) -> Option<M> {
+  pub fn delegate_from<'a, A>(&'a self, action: A) -> Option<A>
+  where
+    A: 'a + Eq + Copy,
+    &'a D: IntoIterator<Item = &'a Delegation<A>>
+  {
     self.data.into_iter()
-      .find(|Delegation { from, .. }| *from == mutation)
+      .find(|Delegation { from, .. }| *from == action)
       .map(|Delegation { to, .. }| to)
       .copied()
   }
 
-  pub fn compose(&'a self, other: &'a Self) -> Self {
+  pub fn compose<'a, A>(&'a self, other: &'a Self) -> Self
+  where
+    S: Copy,
+    A: 'a + Eq + Copy,
+    D: 'a + FromIterator<Delegation<A>>,
+    &'a D: IntoIterator<Item = &'a Delegation<A>>
+  {
     Self::new(
       self.source,
       other.target,
@@ -58,14 +67,4 @@ where
         .collect(),
     )
   }
-}
-
-pub trait Context<S, M>
-where
-  S: State,
-  M: Mutation
-{
-  fn mutations(&self, state: S) -> impl Iterator<Item = M>;
-
-  fn base(&self, mutation: M) -> S;
 }
