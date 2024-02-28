@@ -1,13 +1,7 @@
-use std::marker::PhantomData;
 
 
-
-// TODO: Context is responsible for creation of new data...
-// for example lenses should deal with references to actions, because actions can also be sequences of steps.
-// however composition of lenses should only create new delegations?
-// ... so basically Context is in charge of memory management.
 pub trait Context<S, A> {
-  fn mutations(&self, state: S) -> impl Iterator<Item = A>;
+  fn actions(&self, state: S) -> impl Iterator<Item = A>;
   fn base(&self, action: A) -> S;
 }
 
@@ -39,7 +33,7 @@ where
     }
   }
 
-  pub fn delegate_from(&'a self, t: &'a T) -> Option<&T> {
+  pub fn delegate_from(&'a self, t: &T) -> Option<&T> {
     self.data.into_iter()
       .find(|&&Delegation { from, .. }| from == t)
       .map(|&Delegation { to, .. }| to)
