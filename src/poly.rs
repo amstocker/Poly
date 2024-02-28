@@ -45,11 +45,9 @@ where
       other.target,
       other.data.into_iter()
         .filter_map(|&Delegation { from: other_from, to: other_to }| {
-          if let Some(to) = self.delegate_from(other_to) {
-            Some(Delegation { from: other_from, to })
-          } else {
-            None
-          }
+          self.delegate_from(other_to).map(|to| {
+            Delegation { from: other_from, to }
+          })
         })
         .collect(),
     )
