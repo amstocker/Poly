@@ -18,10 +18,10 @@ const TEST: &str = r#"
 
 
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Debug)]
 struct State(usize);
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Debug)]
 struct Action(usize);
 
 
@@ -37,7 +37,7 @@ fn main() {
     let action2 = Action(2);    // base = state2
     let action3 = Action(3);    // base = state2
 
-    let lens1: Lens<&State, Vec<Delegation<&Action>>> = Lens::new(
+    let lens1: Lens<State, Vec<Delegation<Action>>> = Lens::new(
         &state0,
         &state1,
         vec![
@@ -45,7 +45,7 @@ fn main() {
         ]
     );
 
-    let lens2: Lens<&State, Vec<Delegation<&Action>>> = Lens::new(
+    let lens2: Lens<State, Vec<Delegation<Action>>> = Lens::new(
         &state1,
         &state2,
         vec![
@@ -54,7 +54,7 @@ fn main() {
         ]
     );
     
-    let lens3: Lens<&State, Vec<Delegation<&Action>>> = lens1.compose(&lens2);
+    let lens3: Lens<State, Vec<Delegation<Action>>> = lens1.compose(&lens2);
     
     print!("{:?}", lens3);
 }

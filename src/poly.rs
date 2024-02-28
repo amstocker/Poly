@@ -13,20 +13,25 @@ pub trait Context<S, A> {
 
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub struct Delegation<A> {
-  pub from: A,
-  pub to: A
+pub struct Delegation<'a, T> {
+  pub from: &'a T,
+  pub to: &'a T
 }
 
 #[derive(Debug)]
-pub struct Lens<S, D> {
-  pub source: S,
-  pub target: S,
+pub struct Lens<'a, S, D> {
+  pub source: &'a S,
+  pub target: &'a S,
   pub data: D,
 }
 
-impl<S, D> Lens<S, D> {
-  pub fn new(source: S, target: S, data: D) -> Self {
+impl<'a, S, D, T> Lens<'a, S, D>
+where
+  T: 'a + Eq,
+  D: 'a + FromIterator<Delegation<'a, T>>,
+  &'a D: IntoIterator<Item = &'a Delegation<'a, T>>
+{
+  pub fn new(source: &'a S, target: &'a S, data: D) -> Self {
     Self {
         source,
         target,
@@ -34,30 +39,18 @@ impl<S, D> Lens<S, D> {
     }
   }
 
-  pub fn delegate_from<'a, A>(&'a self, action: A) -> Option<A>
-  where
-    A: 'a + Eq + Copy,
-    &'a D: IntoIterator<Item = &'a Delegation<A>>
-  {
+  pub fn delegate_from(&'a self, t: &'a T) -> Option<&T> {
     self.data.into_iter()
-      .find(|Delegation { from, .. }| *from == action)
-      .map(|Delegation { to, .. }| to)
-      .copied()
+      .find(|&&Delegation { from, .. }| from == t)
+      .map(|&Delegation { to, .. }| to)
   }
 
-  pub fn compose<'a, A>(&'a self, other: &'a Self) -> Self
-  where
-    S: Copy,
-    A: 'a + Eq + Copy,
-    D: 'a + FromIterator<Delegation<A>>,
-    &'a D: IntoIterator<Item = &'a Delegation<A>>
-  {
+  pub fn compose(&'a self, other: &'a Self) -> Self {
     Self::new(
       self.source,
       other.target,
       other.data.into_iter()
-        .copied()
-        .filter_map(|Delegation { from: other_from, to: other_to }| {
+        .filter_map(|&Delegation { from: other_from, to: other_to }| {
           if let Some(to) = self.delegate_from(other_to) {
             Some(Delegation { from: other_from, to })
           } else {
