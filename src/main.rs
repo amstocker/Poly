@@ -34,34 +34,34 @@ fn main() {
     
 
     let unit_state = State { index: 0 };
-    let unit_action = Action { index: 0, base: &unit_state };
+    let unit_action = Action { index: 0, base: unit_state };
 
     let stateA = State { index: 1 };
     let stateB = State { index: 2 };
 
-    let actionAtoA = Action { index: 1, base: &stateA };
-    let actionAtoB = Action { index: 2, base: &stateA };
-    let actionBtoA = Action { index: 3, base: &stateB };
-    let actionBtoB = Action { index: 4, base: &stateB };
+    let actionAtoA = Action { index: 1, base: stateA };
+    let actionAtoB = Action { index: 2, base: stateA };
+    let actionBtoA = Action { index: 3, base: stateB };
+    let actionBtoB = Action { index: 4, base: stateB };
 
     let mut context = SequenceContext::new();
 
-    let AtoAtoA = context.new_sequence([&actionAtoA, &actionAtoA]).unwrap();
-    let AtoBtoA = context.new_sequence([&actionAtoB, &actionBtoA]).unwrap();
-    let AtoAtoB = context.new_sequence([&actionAtoA, &actionAtoB]).unwrap();
-    let AtoBtoB = context.new_sequence([&actionAtoB, &actionBtoB]).unwrap();
+    let AtoAtoA = context.new_sequence([actionAtoA, actionAtoA]).unwrap();
+    let AtoBtoA = context.new_sequence([actionAtoB, actionBtoA]).unwrap();
+    let AtoAtoB = context.new_sequence([actionAtoA, actionAtoB]).unwrap();
+    let AtoBtoB = context.new_sequence([actionAtoB, actionBtoB]).unwrap();
 
-    let BtoAtoA = context.new_sequence([&actionBtoA, &actionAtoA]).unwrap();
-    let BtoAtoB = context.new_sequence([&actionBtoA, &actionAtoB]).unwrap();
-    let BtoBtoA = context.new_sequence([&actionBtoB, &actionBtoA]).unwrap();
-    let BtoBtoB = context.new_sequence([&actionBtoB, &actionBtoB]).unwrap();
+    let BtoAtoA = context.new_sequence([actionBtoA, actionAtoA]).unwrap();
+    let BtoAtoB = context.new_sequence([actionBtoA, actionAtoB]).unwrap();
+    let BtoBtoA = context.new_sequence([actionBtoB, actionBtoA]).unwrap();
+    let BtoBtoB = context.new_sequence([actionBtoB, actionBtoB]).unwrap();
 
-    let AtoA = context.new_sequence([&actionAtoA]).unwrap();
-    let AtoB = context.new_sequence([&actionAtoB]).unwrap();
-    let BtoA = context.new_sequence([&actionBtoA]).unwrap();
-    let BtoB = context.new_sequence([&actionBtoB]).unwrap();
+    let AtoA = context.new_sequence([actionAtoA]).unwrap();
+    let AtoB = context.new_sequence([actionAtoB]).unwrap();
+    let BtoA = context.new_sequence([actionBtoA]).unwrap();
+    let BtoB = context.new_sequence([actionBtoB]).unwrap();
 
-    let identity = context.new_sequence([&unit_action]).unwrap();
+    let identity = context.new_sequence([unit_action]).unwrap();
 
     for elem in &context.data {
         println!("{:?}", elem);

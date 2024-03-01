@@ -5,25 +5,25 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub type SequenceIndex = usize;
 
 #[derive(Debug)]
-pub struct SequenceElem<'a, A> {
+pub struct SequenceElem<A> {
   index: SequenceIndex,
   prev: Option<SequenceIndex>,
   next: Option<SequenceIndex>,
-  action: &'a A
+  action: A
 }
 
 #[derive(Debug)]
-pub struct SequenceContext<'a, A> where A: Eq {
+pub struct SequenceContext<A> {
   id: usize,
-  pub data: Vec<SequenceElem<'a, A>>,
+  pub data: Vec<SequenceElem<A>>,
   cursor: SequenceIndex
 }
 
-impl<'a, A> PartialEq for SequenceContext<'a, A> where A: Eq {
+impl<A> PartialEq for SequenceContext<A> {
     fn eq(&self, other: &Self) -> bool { self.id == other.id }
 }
 
-impl<'a, A> SequenceContext<'a, A> where A: Eq {
+impl<A> SequenceContext<A> {
   pub fn new() -> Self {
     static COUNTER: AtomicUsize = AtomicUsize::new(1);
     Self {
@@ -33,7 +33,7 @@ impl<'a, A> SequenceContext<'a, A> where A: Eq {
     }
   }
 
-  pub fn new_sequence<T: IntoIterator<Item = &'a A>>(&mut self, actions: T) -> Option<SequenceIndex> {
+  pub fn new_sequence<T: IntoIterator<Item = A>>(&mut self, actions: T) -> Option<SequenceIndex> {
     let mut actions = actions.into_iter().peekable();
     let index = actions.peek().map(|_| self.cursor);
 
