@@ -14,8 +14,8 @@ pub struct SequenceElem<A> {
 
 #[derive(Debug)]
 pub struct SequenceContext<A> {
-  id: usize,
-  pub data: Vec<SequenceElem<A>>,
+  pub id: usize,
+  data: Vec<SequenceElem<A>>,
   cursor: SequenceIndex
 }
 
@@ -25,9 +25,11 @@ impl<A> PartialEq for SequenceContext<A> {
 
 impl<A> Default for SequenceContext<A> {
     fn default() -> Self {
-      static COUNTER: AtomicUsize = AtomicUsize::new(1);
       Self {
-        id: COUNTER.fetch_add(1, Ordering::Relaxed),
+        id: (|| {
+          static COUNTER: AtomicUsize = AtomicUsize::new(1);
+          COUNTER.fetch_add(1, Ordering::Relaxed)
+        })(),
         data: Vec::new(),
         cursor: 0
       }

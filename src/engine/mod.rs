@@ -26,8 +26,8 @@ pub struct LensRef {
 pub struct Engine {
   states: Vec<State>,
   actions: Vec<Action>,
-  pub sequence_context: SequenceContext<Action>,
-  pub lenses: Vec<Lens<State, SequenceIndex>>
+  sequence_context: SequenceContext<Action>,
+  lenses: Vec<Lens<State, SequenceIndex>>
 }
 
 impl Engine {
