@@ -39,6 +39,7 @@ impl<A> SequenceContext<A> where A: Eq + Copy {
     if let Some(index) = self.find(actions, self.data.iter(), None, None) {
       return Some(index);
     }
+    
     let mut actions = actions.into_iter().copied().peekable();
     let index = actions.peek().map(|_| self.cursor);
     let mut prev = None;
@@ -57,6 +58,7 @@ impl<A> SequenceContext<A> where A: Eq + Copy {
         break;
       }
     }
+
     index
   }
 
@@ -74,6 +76,7 @@ impl<A> SequenceContext<A> where A: Eq + Copy {
     if actions.len() == 0 {
       return None;
     }
+
     if let Some(&action) = actions.get(0) {
       if actions.len() == 1 {
         return iter.clone()
@@ -86,9 +89,11 @@ impl<A> SequenceContext<A> where A: Eq + Copy {
       } else {
 
         // TODO: Doesn't type check if we just clone the filtered iterator...
-        let filtered = iter.filter(|&e|
-          e.action == action
-        ).collect::<Vec<_>>();
+        let filtered = iter
+          .filter(|&e|
+            e.action == action
+            && e.prev == prev
+          ).collect::<Vec<_>>();
         for &e in filtered.iter() {
           if let Some(_) = self.find(
             &actions[1..],
