@@ -35,7 +35,7 @@ impl<A> Default for SequenceContext<A> {
 
 impl<'a, A> SequenceContext<A> where A: 'a + Eq + Copy {
   pub fn new_sequence<T: IntoIterator<Item = &'a A> + Clone>(&mut self, actions: T) -> Option<SequenceIndex> {
-    if let Some(index) = self.find(actions.clone()) { return Some(index); }
+    //if let Some(index) = self.find(actions.clone()) { return Some(index); }
 
     let mut actions = actions.into_iter().copied().peekable();
     let index = actions.peek().map(|_| self.cursor);

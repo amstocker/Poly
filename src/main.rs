@@ -17,9 +17,7 @@ fn main() {
     let btoa = engine.new_action(b); 
     let btob = engine.new_action(b);
 
-    let comonad_a = engine.new_lens(
-        a,
-        a,
+    let comonad_a = engine.new_lens(a, a,
         &[
             (&[atoa, atoa], &[atoa]),
             (&[atoa, atob], &[atob]),
@@ -28,9 +26,7 @@ fn main() {
         ]
     );
 
-    let comonad_b = engine.new_lens(
-        a,
-        a,
+    let comonad_b = engine.new_lens(b, b,
         &[
             (&[btoa, atoa], &[btoa]),
             (&[btoa, atob], &[btob]),
@@ -39,19 +35,7 @@ fn main() {
         ]
     );
 
-    let counit_a = engine.new_lens(
-        a,
-        a,
-        &[
-            (&[unit_action], &[atoa]),
-        ]
-    );
+    let counit_a = engine.new_lens(a, a, &[(&[unit_action], &[atoa])]);
 
-    let counit_b = engine.new_lens(
-        a,
-        a,
-        &[
-            (&[unit_action], &[btob]),
-        ]
-    );
+    let counit_b = engine.new_lens(b, b, &[(&[unit_action], &[btob])]);
 }
