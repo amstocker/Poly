@@ -1,7 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 
-
 pub type SequenceIndex = usize;
 
 #[derive(Debug)]
@@ -23,20 +22,23 @@ impl<A> PartialEq for SequenceContext<A> {
     fn eq(&self, other: &Self) -> bool { self.id == other.id }
 }
 
-impl<A> SequenceContext<A> {
-  pub fn new() -> Self {
-    static COUNTER: AtomicUsize = AtomicUsize::new(1);
-    Self {
-      id: COUNTER.fetch_add(1, Ordering::Relaxed),
-      data: Vec::new(),
-      cursor: 0
+impl<A> Default for SequenceContext<A> {
+    fn default() -> Self {
+      static COUNTER: AtomicUsize = AtomicUsize::new(1);
+      Self {
+        id: COUNTER.fetch_add(1, Ordering::Relaxed),
+        data: Vec::new(),
+        cursor: 0
+      }
     }
-  }
+}
 
-  pub fn new_sequence<T: IntoIterator<Item = A>>(&mut self, actions: T) -> Option<SequenceIndex> {
-    let mut actions = actions.into_iter().peekable();
+impl<'a, A> SequenceContext<A> where A: 'a + Eq + Copy {
+  pub fn new_sequence<T: IntoIterator<Item = &'a A> + Clone>(&mut self, actions: T) -> Option<SequenceIndex> {
+    if let Some(index) = self.find(actions.clone()) { return Some(index); }
+
+    let mut actions = actions.into_iter().copied().peekable();
     let index = actions.peek().map(|_| self.cursor);
-
     let mut prev = None;
     loop {
       if let Some(action) = actions.next() {
@@ -55,6 +57,10 @@ impl<A> SequenceContext<A> {
     }
 
     index
+  }
+
+  pub fn find<T: IntoIterator<Item = &'a A>>(&self, actions: T) -> Option<SequenceIndex> {
+    todo!()
   }
 }
 
