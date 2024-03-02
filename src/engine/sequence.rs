@@ -14,7 +14,7 @@ pub struct SequenceElem<A> {
 
 #[derive(Debug)]
 pub struct SequenceContext<A> {
-  pub id: usize,
+  id: usize,
   data: Vec<SequenceElem<A>>,
   cursor: SequenceIndex
 }
@@ -38,33 +38,38 @@ impl<A> Default for SequenceContext<A> {
 
 impl<A> SequenceContext<A> where A: Eq + Copy {
   pub fn new_sequence(&mut self, actions: &[A]) -> Option<SequenceIndex> {
-    if let Some(index) = self.find(actions, self.data.iter(), None, None) {
+    if let Some(index) = self.find(actions) {
       return Some(index);
     }
     
     let mut actions = actions.into_iter().copied().peekable();
     let index = actions.peek().map(|_| self.cursor);
     let mut prev = None;
-    loop {
-      if let Some(action) = actions.next() {
-        let seq = SequenceElem {
-          index: self.cursor,
-          prev,
-          next: actions.peek().map(|_| self.cursor + 1),
-          action
-        };
-        self.data.push(seq);
-        prev = Some(self.cursor);
-        self.cursor += 1;
-      } else {
-        break;
-      }
+    while let Some(action) = actions.next() {
+      let seq = SequenceElem {
+        index: self.cursor,
+        prev,
+        next: actions.peek().map(|_| self.cursor + 1),
+        action
+      };
+      self.data.push(seq);
+      prev = Some(self.cursor);
+      self.cursor += 1;
     }
 
     index
   }
 
-  pub fn find<'a, I>(
+  pub fn find(&self, actions: &[A]) -> Option<SequenceIndex> {
+    self.find_helper(
+      actions,
+      self.data.iter(),
+      None,
+      None
+    )
+  }
+
+  fn find_helper<'a, I>(
     &self,
     actions: &[A],
     iter: I,
@@ -97,7 +102,7 @@ impl<A> SequenceContext<A> where A: Eq + Copy {
             && e.prev == prev
           ).collect::<Vec<_>>();
         for &e in filtered.iter() {
-          if let Some(_) = self.find(
+          if let Some(_) = self.find_helper(
             &actions[1..],
             filtered.iter().cloned(),
             first.or(Some(e.index)),
