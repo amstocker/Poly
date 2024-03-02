@@ -38,4 +38,5 @@ fn main() {
     let counit_a = engine.new_lens(a, a, &[(&[unit_action], &[atoa])]);
 
     let counit_b = engine.new_lens(b, b, &[(&[unit_action], &[btob])]);
+
 }

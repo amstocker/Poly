@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 
@@ -33,10 +34,11 @@ impl<A> Default for SequenceContext<A> {
     }
 }
 
-impl<'a, A> SequenceContext<A> where A: 'a + Eq + Copy {
-  pub fn new_sequence<T: IntoIterator<Item = &'a A> + Clone>(&mut self, actions: T) -> Option<SequenceIndex> {
-    //if let Some(index) = self.find(actions.clone()) { return Some(index); }
-
+impl<A> SequenceContext<A> where A: Eq + Copy {
+  pub fn new_sequence(&mut self, actions: &[A]) -> Option<SequenceIndex> {
+    if let Some(index) = self.find(actions, self.data.iter(), None, None) {
+      return Some(index);
+    }
     let mut actions = actions.into_iter().copied().peekable();
     let index = actions.peek().map(|_| self.cursor);
     let mut prev = None;
@@ -55,12 +57,49 @@ impl<'a, A> SequenceContext<A> where A: 'a + Eq + Copy {
         break;
       }
     }
-
     index
   }
 
-  pub fn find<T: IntoIterator<Item = &'a A>>(&self, actions: T) -> Option<SequenceIndex> {
-    todo!()
+  pub fn find<'a, I>(
+    &self,
+    actions: &[A],
+    iter: I,
+    first: Option<SequenceIndex>,
+    prev: Option<SequenceIndex>
+  ) -> Option<SequenceIndex>
+  where
+    A: 'a,
+    I: Iterator<Item = &'a SequenceElem<A>> + Clone
+  {
+    if actions.len() == 0 {
+      return None;
+    }
+    if let Some(&action) = actions.get(0) {
+      if actions.len() == 1 {
+        return iter.clone()
+          .find(|&e|
+            e.action == action
+            && e.next.is_none()
+            && e.prev == prev
+          )
+          .and_then(|e| first.or(Some(e.index)));
+      } else {
+        let filtered = iter.filter(|&e|
+          e.action == action
+        ).collect::<Vec<_>>();
+        for &e in filtered.iter() {
+          if let Some(_) = self.find(
+            &actions[1..],
+            filtered.iter().cloned(),
+            first.or(Some(e.index)),
+            Some(e.index)
+          ) {
+            return first;
+          }
+        }
+      }
+    }
+    None
   }
 }
 

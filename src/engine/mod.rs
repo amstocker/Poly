@@ -26,8 +26,8 @@ pub struct LensRef {
 pub struct Engine {
   states: Vec<State>,
   actions: Vec<Action>,
-  sequence_context: SequenceContext<Action>,
-  lenses: Vec<Lens<State, SequenceIndex>>
+  pub sequence_context: SequenceContext<Action>,
+  pub lenses: Vec<Lens<State, SequenceIndex>>
 }
 
 impl Engine {
@@ -59,10 +59,10 @@ impl Engine {
     let lens = Lens {
       source,
       target,
-      data: delegations.into_iter()
+      data: delegations.iter()
         .map(|(from, to)| Delegation {
-          from: self.sequence_context.new_sequence(*from).unwrap(),
-          to: self.sequence_context.new_sequence(*to).unwrap()
+          from: self.sequence_context.new_sequence(from).unwrap(),
+          to: self.sequence_context.new_sequence(to).unwrap()
         })
         .collect::<Vec<_>>()
     };
