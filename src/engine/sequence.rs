@@ -84,6 +84,8 @@ impl<A> SequenceContext<A> where A: Eq + Copy {
           )
           .and_then(|e| first.or(Some(e.index)));
       } else {
+
+        // TODO: Doesn't type check if we just clone the filtered iterator...
         let filtered = iter.filter(|&e|
           e.action == action
         ).collect::<Vec<_>>();
@@ -99,6 +101,7 @@ impl<A> SequenceContext<A> where A: Eq + Copy {
         }
       }
     }
+
     None
   }
 }
