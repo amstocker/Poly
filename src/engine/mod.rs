@@ -31,11 +31,11 @@ pub struct LensRef {
 pub struct Engine {
   states: Vec<State>,
   actions: Vec<Action>,
-  pub sequence_context: SequenceContext<Action>,
+  sequence_context: SequenceContext<Action>,
   lenses: Vec<Lens<State, SequenceIndex>>,
 
-  pub label_to_state: HashMap<String, State>,
-  pub label_to_action: HashMap<String, Action>
+  label_to_state: HashMap<String, State>,
+  label_to_action: HashMap<String, Action>
 }
 
 

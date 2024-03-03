@@ -6,16 +6,16 @@ pub type SequenceIndex = usize;
 
 #[derive(Debug)]
 pub struct SequenceElem<A> {
-  pub index: SequenceIndex,
+  index: SequenceIndex,
   prev: Option<SequenceIndex>,
-  pub next: Option<SequenceIndex>,
-  pub action: A
+  next: Option<SequenceIndex>,
+  action: A
 }
 
 #[derive(Debug)]
 pub struct SequenceContext<A> {
   id: usize,
-  pub data: Vec<SequenceElem<A>>,
+  data: Vec<SequenceElem<A>>,
   cursor: SequenceIndex
 }
 
@@ -101,9 +101,12 @@ where
         // TODO: Doesn't type check if we just clone the filtered iterator...
         let filtered = iter
           .clone()
-          .filter(|&e| e.action == action && e.prev == prev)
+          .filter(|&e|
+            e.action == action
+            && e.prev == prev
+          )
           .filter_map(|e| e.next)
-          .map(|index| self.data.get(index).unwrap())
+          .filter_map(|index| self.data.get(index))
           .collect::<Vec<_>>();
         for e in iter {
           if let Some(index) = self.find_helper(
