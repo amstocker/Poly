@@ -61,28 +61,23 @@ where
   }
 
   pub fn find(&self, actions: &[A]) -> Option<SequenceIndex> {
-    if actions.len() == 0 {
-      None
-    } else {
-      self.data.iter()
-        .filter(|&elem|
-          elem.prev == None
-          && self.is_same_sequence(elem.index, actions)
-        )
-        .map(|elem| elem.index)
-        .next()
-    }
+    self.data.iter()
+      .filter(|&elem| self.is_same_sequence(actions, elem.index, None))
+      .map(|elem| elem.index)
+      .next()
   }
 
-  fn is_same_sequence(&self, index: SequenceIndex, actions: &[A]) -> bool {
-    if let (Some(elem), Some(&action)) = (self.data.get(index), actions.get(0)) {
-      if actions.len() == 1 {
-        elem.action == action
-        && elem.next == None
+  fn is_same_sequence(&self, actions: &[A], index: SequenceIndex, prev: Option<SequenceIndex>) -> bool {
+    if actions.len() == 0 {
+      false
+    } else if let (Some(elem), Some(&action)) = (self.data.get(index), actions.get(0)) {
+      elem.action == action
+      && elem.prev == prev
+      && if actions.len() == 1 {
+        elem.next == None
       } else {
-        elem.action == action
-        && if let Some(index) = elem.next {
-          self.is_same_sequence(index, &actions[1..])
+        if let Some(next_index) = elem.next {
+          self.is_same_sequence(&actions[1..], next_index, Some(index))
         } else {
           false
         }
