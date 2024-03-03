@@ -6,16 +6,16 @@ pub type SequenceIndex = usize;
 
 #[derive(Debug)]
 pub struct SequenceElem<A> {
-  index: SequenceIndex,
+  pub index: SequenceIndex,
   prev: Option<SequenceIndex>,
-  next: Option<SequenceIndex>,
-  action: A
+  pub next: Option<SequenceIndex>,
+  pub action: A
 }
 
 #[derive(Debug)]
 pub struct SequenceContext<A> {
   id: usize,
-  data: Vec<SequenceElem<A>>,
+  pub data: Vec<SequenceElem<A>>,
   cursor: SequenceIndex
 }
 
@@ -36,7 +36,10 @@ impl<A> Default for SequenceContext<A> {
     }
 }
 
-impl<A> SequenceContext<A> where A: Eq + Copy {
+impl<A> SequenceContext<A>
+where
+  A: Eq + Copy
+{
   pub fn new_sequence(&mut self, actions: &[A]) -> Option<SequenceIndex> {
     if let Some(index) = self.find(actions) {
       return Some(index);
@@ -97,24 +100,41 @@ impl<A> SequenceContext<A> where A: Eq + Copy {
 
         // TODO: Doesn't type check if we just clone the filtered iterator...
         let filtered = iter
-          .filter(|&e|
-            e.action == action
-            && e.prev == prev
-          ).collect::<Vec<_>>();
-        for &e in filtered.iter() {
-          if let Some(_) = self.find_helper(
+          .clone()
+          .filter(|&e| e.action == action && e.prev == prev)
+          .filter_map(|e| e.next)
+          .map(|index| self.data.get(index).unwrap())
+          .collect::<Vec<_>>();
+        for e in iter {
+          if let Some(index) = self.find_helper(
             &actions[1..],
             filtered.iter().cloned(),
             first.or(Some(e.index)),
             Some(e.index)
           ) {
-            return first;
+            return Some(index);
           }
         }
       }
     }
 
     None
+  }
+
+  pub fn get_action(&self, index: SequenceIndex) -> Option<A> {
+    self.data.get(index).map(|e| e.action)
+  }
+
+  pub fn get_action_sequence(&self, mut index: SequenceIndex) -> Vec<A> {
+    let mut actions = Vec::new();
+    while let Some(elem) = self.data.get(index) {
+      actions.push(elem.action);
+      index = match elem.next {
+        Some(index) => index,
+        None => break,
+      }
+    }
+    actions
   }
 }
 
