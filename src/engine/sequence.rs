@@ -68,9 +68,7 @@ where
   }
 
   fn is_same_sequence(&self, actions: &[A], index: SequenceIndex, prev: Option<SequenceIndex>) -> bool {
-    if actions.len() == 0 {
-      false
-    } else if let (Some(elem), Some(&action)) = (self.data.get(index), actions.get(0)) {
+    if let (Some(elem), Some(&action)) = (self.data.get(index), actions.get(0)) {
       elem.action == action
       && elem.prev == prev
       && if actions.len() == 1 {
