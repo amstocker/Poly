@@ -3,7 +3,9 @@ pub mod sequence;
 pub mod config;
 
 
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map};
+
+use chumsky::combinator::Label;
 
 use self::config::{Config, DelegationConfig};
 use self::lens::{Delegation, Lens};
@@ -11,12 +13,12 @@ use self::sequence::{SequenceContext, SequenceIndex};
 
 
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug)]
 pub struct State {
   index: usize
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug)]
 pub struct Action {
   index: usize,
   base: State
@@ -28,14 +30,38 @@ pub struct LensRef {
 
 
 #[derive(Default)]
+pub struct LabelMap<T>(HashMap<String, T>);
+
+impl<T> LabelMap<T> where T: Eq + Copy {
+  pub fn insert(&mut self, label: String, value: T) {
+    self.0.insert(label.into(), value);
+  }
+
+  pub fn get(&self, label: &str) -> Option<T> {
+    self.0.get(label.into()).copied()
+  }
+
+  pub fn reverse_lookup(&self, value: T) -> Option<&String> {
+    self.iter()
+      .find(|(_, &v)| v == value)
+      .map(|(label, _)| label)
+  }
+
+  pub fn iter(&self) -> hash_map::Iter<String, T> {
+    self.0.iter()
+  }
+}
+
+
+#[derive(Default)]
 pub struct Engine {
   states: Vec<State>,
   actions: Vec<Action>,
-  pub sequence_context: SequenceContext<Action>,
+  sequence_context: SequenceContext<Action>,
   lenses: Vec<Lens<State, SequenceIndex>>,
 
-  pub label_to_state: HashMap<String, State>,
-  pub label_to_action: HashMap<String, Action>
+  label_to_state: LabelMap<State>,
+  label_to_action: LabelMap<Action>
 }
 
 
@@ -43,57 +69,58 @@ impl Engine {
   pub fn from_config(config: Config) -> Self {
     let mut engine = Engine::default();
     
+    let mut label_to_state = LabelMap::default();
+    let mut label_to_action = LabelMap::default();
+
     for state_config in config.states {
       let state = engine.new_state();
-      engine.label_to_state.insert(state_config.label, state);
+      label_to_state.insert(state_config.label, state);
 
       for action_label in state_config.actions {
         let action = engine.new_action(state);
-        engine.label_to_action.insert(action_label, action);
+        label_to_action.insert(action_label, action);
       }
     }
 
     for lens_config in config.lenses {
       engine.new_lens(
-        engine.label_to_state.get(&lens_config.source).copied().unwrap(),
-        engine.label_to_state.get(&lens_config.target).copied().unwrap(),
-        lens_config.delegations.iter()
+        label_to_state.get(&lens_config.source).unwrap(),
+        label_to_state.get(&lens_config.target).unwrap(),
+        lens_config.delegations.into_iter()
           .map(|DelegationConfig { from, to }| Delegation {
-            from: from.into_iter()
-              .map(|label| engine.label_to_action.get(label).copied().unwrap())
+            from: from.into_iter().rev()
+              .map(|label| label_to_action.get(&label).unwrap())
               .collect(),
-            to: to.into_iter()
-              .map(|label| engine.label_to_action.get(label).copied().unwrap())
+            to: to.into_iter().rev()
+              .map(|label| label_to_action.get(&label).unwrap())
               .collect()
           })
-          .collect()
       );
     }
+
+    engine.label_to_state = label_to_state;
+    engine.label_to_action = label_to_action;
 
     engine
   }
 
   pub fn lookup_state_label(&self, state: State) -> Option<&String> {
-    self.label_to_state.iter()
-      .find(|(_, &value)| value == state)
-      .map(|(label, _)| label)
+    self.label_to_state.reverse_lookup(state)
   }
 
   pub fn lookup_action_label(&self, action: Action) -> Option<&String> {
-    self.label_to_action.iter()
-      .find(|(_, &value)| value == action)
-      .map(|(label, _)| label)
+    self.label_to_action.reverse_lookup(action)
   }
 
-  pub fn lookup_action_labels(&self, actions: &[Action]) -> Vec<&String> {
-    actions.iter()
-      .map(|&action| self.lookup_action_label(action).unwrap())
+  pub fn lookup_action_labels<I: Iterator<Item = Action>>(&self, actions: I) -> Vec<&String> {
+    actions
+      .map(|action| self.lookup_action_label(action).unwrap())
       .collect() 
   }
 
   pub fn lookup_action_sequence_labels(&self, index: SequenceIndex) -> Vec<&String> {
     self.lookup_action_labels(
-      &self.sequence_context.get_action_sequence(index)
+      self.sequence_context.get_action_sequence(index)
     )
   }
 
@@ -128,19 +155,18 @@ impl Engine {
     action
   }
 
-  fn new_lens(
+  fn new_lens<I: Iterator<Item = Delegation<Vec<Action>>>>(
     &mut self,
     source: State,
     target: State,
-    delegations:  Vec<Delegation<Vec<Action>>> 
+    delegations: I 
   ) -> LensRef {
     let lens = Lens {
       source,
       target,
-      data: delegations.iter()
-        .map(|Delegation { from, to }| Delegation {
-          from: self.sequence_context.new_sequence(from).unwrap(),
-          to: self.sequence_context.new_sequence(to).unwrap()
+      data: delegations.map(|Delegation { from, to }| Delegation {
+          from: self.sequence_context.new_sequence(from.into_iter()).unwrap(),
+          to: self.sequence_context.new_sequence(to.into_iter()).unwrap()
         })
         .collect::<Vec<_>>()
     };
@@ -152,12 +178,11 @@ impl Engine {
     lens_ref
   }
 
-  pub fn reduce(&self, actions: &[&str]) -> Option<Action> {
-    let actions = actions.iter()
-      .map(|&label| self.label_to_action.get(label).copied().unwrap())
-      .collect::<Vec<_>>();
-    
-    if let Some(index) = self.sequence_context.find(&actions) {
+  pub fn reduce<'a, I: Iterator<Item = &'a str> + Clone>(&self, actions: I) -> Option<Action> {
+    let actions = actions.map(|label|
+      self.label_to_action.get(label).unwrap()
+    );
+    if let Some(index) = self.sequence_context.get_sequence(actions) {
       for lens in &self.lenses {
         for delegation in &lens.data {
           if delegation.from == index {
