@@ -1,11 +1,10 @@
+pub mod action;
+pub mod config;
 pub mod lens;
 pub mod sequence;
-pub mod config;
 
 
 use std::collections::{HashMap, hash_map};
-
-use chumsky::combinator::Label;
 
 use self::config::{Config, DelegationConfig};
 use self::lens::{Delegation, Lens};
