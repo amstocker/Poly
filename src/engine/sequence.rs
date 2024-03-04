@@ -6,10 +6,10 @@ pub type SequenceIndex = usize;
 
 #[derive(Debug)]
 pub struct SequenceElem<A> {
-  index: SequenceIndex,
-  action: A,
-  next: Option<SequenceIndex>,
-  prev: HashSet<SequenceIndex>
+  pub index: SequenceIndex,
+  pub action: A,
+  pub prev: Option<SequenceIndex>,
+  pub next: HashSet<SequenceIndex>
 }
 
 #[derive(Clone, Copy)]
@@ -25,7 +25,7 @@ impl<'a, A> Iterator for SequenceIter<'a, A> where A: Copy {
     self.index.and_then(|index|
       self.context.data.get(index)
         .map(|elem| {
-          self.index = elem.next;
+          self.index = elem.prev;
           elem.action
         })
     )
@@ -36,7 +36,7 @@ impl<'a, A> Iterator for SequenceIter<'a, A> where A: Copy {
 #[derive(Debug)]
 pub struct SequenceContext<A> {
   id: usize,
-  data: Vec<SequenceElem<A>>
+  pub data: Vec<SequenceElem<A>>
 }
 
 impl<A> PartialEq for SequenceContext<A> {
@@ -63,28 +63,28 @@ where
     self.add_sequence(actions, None)
   }
 
-  pub fn add_sequence<I: Iterator<Item = A> + Clone>(&mut self, mut actions: I, next: Option<SequenceIndex>) -> Option<SequenceIndex> {
+  pub fn add_sequence<I: Iterator<Item = A> + Clone>(&mut self, mut actions: I, prev: Option<SequenceIndex>) -> Option<SequenceIndex> {
     actions.next()
       .and_then(|action| {
         let index = if let Some(elem) = self.data.iter().find(|&elem|
           elem.action == action
-          && elem.next == next
+          && elem.prev == prev
         ) {
           elem.index
         } else {
           let index = self.data.len();
-          self.data.push(SequenceElem { index, action, next, prev: HashSet::new() });
+          self.data.push(SequenceElem { index, action, prev, next: HashSet::new() });
           index
         };
 
-        next.and_then(|next_index|
+        prev.and_then(|next_index|
           self.data.get_mut(next_index)
-            .map(|elem| elem.prev.insert(index))
+            .map(|elem| elem.next.insert(index))
         );
 
         self.add_sequence(actions, Some(index))
       })
-      .or(next)
+      .or(prev)
   }
 
   pub fn get_sequence<I: Iterator<Item = A> + Clone>(&self, actions: I) -> Option<SequenceIndex> {
@@ -98,7 +98,7 @@ where
     match (actions.next(), index.and_then(|index| self.data.get(index))) {
         (Some(action), Some(elem)) =>
           elem.action == action
-          && self.is_same_sequence(actions, elem.next),
+          && self.is_same_sequence(actions, elem.prev),
         (None, None) => true,
         (_, _) => false
     }

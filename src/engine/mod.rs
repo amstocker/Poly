@@ -57,8 +57,8 @@ impl<T> LabelMap<T> where T: Eq + Copy {
 pub struct Engine {
   states: Vec<State>,
   actions: Vec<Action>,
-  sequence_context: SequenceContext<Action>,
-  lenses: Vec<Lens<State, SequenceIndex>>,
+  pub sequence_context: SequenceContext<Action>,
+  pub lenses: Vec<Lens<State, SequenceIndex>>,
 
   label_to_state: LabelMap<State>,
   label_to_action: LabelMap<Action>
@@ -88,10 +88,10 @@ impl Engine {
         label_to_state.get(&lens_config.target).unwrap(),
         lens_config.delegations.into_iter()
           .map(|DelegationConfig { from, to }| Delegation {
-            from: from.into_iter().rev()
+            from: from.into_iter()
               .map(|label| label_to_action.get(&label).unwrap())
               .collect(),
-            to: to.into_iter().rev()
+            to: to.into_iter()
               .map(|label| label_to_action.get(&label).unwrap())
               .collect()
           })
@@ -178,6 +178,7 @@ impl Engine {
     lens_ref
   }
 
+  // Reduce expects a _stack_ of actions, so that the most recent action is first.
   pub fn reduce<'a, I: Iterator<Item = &'a str> + Clone>(&self, actions: I) -> Option<Action> {
     let actions = actions.map(|label|
       self.label_to_action.get(label).unwrap()
