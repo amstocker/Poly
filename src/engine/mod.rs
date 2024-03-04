@@ -178,7 +178,7 @@ impl Engine {
     lens_ref
   }
 
-  // Reduce expects a _stack_ of actions, so that the most recent action is first.
+  // `reduce` expects a _stack_ of actions, so that the most recent action is first.
   pub fn reduce<'a, I: Iterator<Item = &'a str> + Clone>(&self, actions: I) -> Option<Action> {
     let actions = actions.map(|label|
       self.label_to_action.get(label).unwrap()

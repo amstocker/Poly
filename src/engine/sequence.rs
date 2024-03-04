@@ -77,8 +77,8 @@ where
           index
         };
 
-        prev.and_then(|next_index|
-          self.data.get_mut(next_index)
+        prev.and_then(|prev_index|
+          self.data.get_mut(prev_index)
             .map(|elem| elem.next.insert(index))
         );
 
@@ -87,6 +87,7 @@ where
       .or(prev)
   }
 
+  // `get_sequence` expects a _stack_ of actions (i.e. most recent action first!)
   pub fn get_sequence<I: Iterator<Item = A> + Clone>(&self, actions: I) -> Option<SequenceIndex> {
     self.data.iter()
       .filter(|&elem| self.is_same_sequence(actions.clone(), Some(elem.index)))
@@ -94,6 +95,7 @@ where
       .next()
   }
 
+  // ``is_same_sequence` also expects a _stack_ of actions.
   pub fn is_same_sequence<I: Iterator<Item = A> + Clone>(&self, mut actions: I, index: Option<SequenceIndex>) -> bool {
     match (actions.next(), index.and_then(|index| self.data.get(index))) {
         (Some(action), Some(elem)) =>
