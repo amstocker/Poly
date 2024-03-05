@@ -59,11 +59,15 @@ impl<A> SequenceContext<A>
 where
   A: Eq + Copy
 {
-  pub fn new_sequence<I: Iterator<Item = A> + Clone>(&mut self, actions: I) -> Option<SequenceIndex> {
+  pub fn new_sequence(&mut self, actions: impl Iterator<Item = A> + Clone) -> Option<SequenceIndex> {
     self.add_sequence(actions, None)
   }
 
-  pub fn add_sequence<I: Iterator<Item = A> + Clone>(&mut self, mut actions: I, prev: Option<SequenceIndex>) -> Option<SequenceIndex> {
+  pub fn add_sequence(
+    &mut self,
+    mut actions: impl Iterator<Item = A> + Clone,
+    prev: Option<SequenceIndex>
+  ) -> Option<SequenceIndex> {
     actions.next()
       .and_then(|action| {
         let index = if let Some(elem) = self.data.iter().find(|&elem|
@@ -88,7 +92,10 @@ where
   }
 
   // `get_sequence` expects a _stack_ of actions (i.e. most recent action first!)
-  pub fn get_sequence<I: Iterator<Item = A> + Clone>(&self, actions: I) -> Option<SequenceIndex> {
+  pub fn get_sequence(
+    &self,
+    actions: impl Iterator<Item = A> + Clone
+  ) -> Option<SequenceIndex> {
     self.data.iter()
       .filter(|&elem| self.is_same_sequence(actions.clone(), Some(elem.index)))
       .map(|elem| elem.index)
@@ -96,7 +103,11 @@ where
   }
 
   // ``is_same_sequence` also expects a _stack_ of actions.
-  pub fn is_same_sequence<I: Iterator<Item = A> + Clone>(&self, mut actions: I, index: Option<SequenceIndex>) -> bool {
+  pub fn is_same_sequence(
+    &self,
+    mut actions: impl Iterator<Item = A> + Clone,
+    index: Option<SequenceIndex>
+  ) -> bool {
     match (actions.next(), index.and_then(|index| self.data.get(index))) {
         (Some(action), Some(elem)) =>
           elem.action == action

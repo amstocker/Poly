@@ -100,15 +100,14 @@ impl Engine {
     self.label_to_action.reverse_lookup(action)
   }
 
-  pub fn lookup_actions<'a, S, I>(&'a self, labels: I) -> impl Iterator<Item = Action> + Clone + 'a
-  where
-    S: AsRef<str>,
-    I: 'a + Iterator<Item = S> + Clone
-  {
+  pub fn lookup_actions<'a, S: AsRef<str>>(
+    &'a self,
+    labels: impl Iterator<Item = S> + Clone + 'a
+  ) -> impl Iterator<Item = Action> + Clone + 'a {
     labels.map(|label| self.label_to_action.get(label).unwrap())
   }
 
-  pub fn lookup_action_labels<I: Iterator<Item = Action>>(&self, actions: I) -> Vec<&String> {
+  pub fn lookup_action_labels(&self, actions: impl Iterator<Item = Action>) -> Vec<&String> {
     actions
       .map(|action| self.lookup_action_label(action).unwrap())
       .collect() 
@@ -146,11 +145,11 @@ impl Engine {
     action
   }
 
-  fn new_transform<I1, I2>(&mut self, from: I1, to: I2) -> TransformIndex
-  where
-    I1: Iterator<Item = Action> + Clone,
-    I2: Iterator<Item = Action> + Clone
-  {
+  fn new_transform(
+    &mut self,
+    from: impl Iterator<Item = Action> + Clone,
+    to: impl Iterator<Item = Action> + Clone
+  ) -> TransformIndex {
     let index = self.transforms.len();
     self.transforms.push(Transform {
       from: self.sequence_context.new_sequence(from).unwrap(),
@@ -159,11 +158,10 @@ impl Engine {
     index
   }
 
-  pub fn reduce_labeled<'a, S, I>(&self, labels: I) -> Option<&String>
-  where
-    S: AsRef<str>,
-    I: Iterator<Item = S> + Clone
-  {
+  pub fn reduce_labeled<'a, S: AsRef<str>>(
+    &self,
+    labels: impl Iterator<Item = S> + Clone
+  ) -> Option<&String> {
     self.reduce(
       self.lookup_actions(labels)
     ).and_then(|action|
@@ -173,7 +171,10 @@ impl Engine {
   }
 
   // `reduce` expects a _stack_ of actions, so that the most recent action is first.
-  pub fn reduce<I: Iterator<Item = Action> + Clone>(&self, actions: I) -> Option<Action> {
+  pub fn reduce(
+    &self,
+    actions: impl Iterator<Item = Action> + Clone
+  ) -> Option<Action> {
     self.sequence_context.get_sequence(actions)
       .and_then(|index|
         self.transforms.iter()
