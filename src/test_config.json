@@ -1,43 +1,30 @@
 {
   "states": [
     { "label": "UNIT",  "actions": ["IDENTITY"] },
+
     { "label": "A",     "actions": ["AtoA", "AtoB"] },
-    { "label": "B",     "actions": ["BtoA", "BtoB"] }
+    { "label": "B",     "actions": ["BtoA", "BtoB"] },
+
+    { "label": "X",     "actions": ["0to0", "0to1"] },
+    { "label": "Y",     "actions": ["1to0"] }
   ],
-  "lenses": [
-    {
-      "source": "A",
-      "target": "A",
-      "delegations": [
-        { "from": ["AtoA", "AtoA"], "to": ["AtoA"] },
-        { "from": ["AtoA", "AtoB"], "to": ["AtoB"] },
-        { "from": ["AtoB", "BtoA"], "to": ["AtoA"] },
-        { "from": ["AtoB", "BtoB"], "to": ["AtoB"] }
-      ]
-    },
-    {
-      "source": "B",
-      "target": "B",
-      "delegations": [
-        { "from": ["BtoA", "AtoA"], "to": ["BtoA"] },
-        { "from": ["BtoA", "AtoB"], "to": ["BtoB"] },
-        { "from": ["BtoB", "BtoA"], "to": ["BtoA"] },
-        { "from": ["BtoB", "BtoB"], "to": ["BtoB"] }
-      ]
-    },
-    {
-      "source": "A",
-      "target": "UNIT",
-      "delegations": [
-        { "from": ["IDENTITY"], "to": ["AtoA"] }
-      ]
-    },
-    {
-      "source": "B",
-      "target": "UNIT",
-      "delegations": [
-        { "from": ["IDENTITY"], "to": ["BtoB"] }
-      ]
-    }
+  "transforms": [
+    { "from": ["AtoA", "AtoA"], "to": ["AtoA"] },
+    { "from": ["AtoA", "AtoB"], "to": ["AtoB"] },
+    { "from": ["AtoB", "BtoA"], "to": ["AtoA"] },
+    { "from": ["AtoB", "BtoB"], "to": ["AtoB"] },
+
+    { "from": ["BtoA", "AtoA"], "to": ["BtoA"] },
+    { "from": ["BtoA", "AtoB"], "to": ["BtoB"] },
+    { "from": ["BtoB", "BtoA"], "to": ["BtoA"] },
+    { "from": ["BtoB", "BtoB"], "to": ["BtoB"] },
+
+    { "from": ["IDENTITY"], "to": ["AtoA"] },
+    { "from": ["IDENTITY"], "to": ["BtoB"] },
+
+    { "from": ["0to0"], "to": ["AtoA"] },
+    { "from": ["0to1"], "to": ["AtoB"] },
+
+    { "from": ["1to0"], "to": ["BtoA"] }
   ]
 }

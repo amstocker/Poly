@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
   pub states: Vec<StateConfig>,
-  pub lenses: Vec<LensConfig>,
+  pub transforms: Vec<TransformConfig>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -14,14 +14,7 @@ pub struct StateConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct LensConfig {
-  pub source: String,
-  pub target: String,
-  pub delegations: Vec<DelegationConfig>
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DelegationConfig {
+pub struct TransformConfig {
   pub from: Vec<String>,
   pub to: Vec<String>
 }

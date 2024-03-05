@@ -2,35 +2,30 @@ mod engine;
 
 use serde_json;
 
+use crate::engine::Engine;
+use crate::engine::config::Config;
 
 
-fn reduce(engine: &crate::engine::Engine, actions: &[&str]) {
+
+fn reduce(engine: &Engine, actions: &[&str]) {
     println!("{:?} -> {:?}",
         actions,
-        engine.lookup_action_label(
-            engine.reduce(
-                // Most recent actions should be _first_.
-                actions.into_iter().copied().rev()
-            ).unwrap()
-        ).unwrap()
+        engine.reduce_labeled(actions.into_iter().rev())
     );
 }
 
 fn main() {
-    use crate::engine::Engine;
-    use crate::engine::config::Config;
-
     let config = serde_json::from_str::<Config>(include_str!("test_config.json")).unwrap();
     let engine = Engine::from_config(config);
 
-    println!("Sequences:");
+    println!("Sequence Elements:");
     for elem in &engine.sequence_context.data {
         println!("\t{:?}: action={:?}, next={:?}, prev={:?}", elem.index, engine.lookup_action_label(elem.action).unwrap(), elem.next, elem.prev);
     }
 
-    println!("Lenses:");
-    for lens in &engine.lenses {
-        println!("\t{:?}", lens);
+    println!("Transforms:");
+    for transform in &engine.transforms {
+        println!("\t{:?}", transform);
     }
 
     let sequences = [
@@ -41,11 +36,11 @@ fn main() {
         ["BtoA", "AtoA"],
         ["BtoA", "AtoB"],
         ["BtoB", "BtoA"],
-        ["BtoB", "BtoB"],
+        ["BtoB", "BtoB"]
     ];
 
-    for seq in sequences.into_iter() {
-        reduce(&engine, &seq);
+    for actions in sequences.into_iter() {
+        reduce(&engine, &actions);
     }
     
 

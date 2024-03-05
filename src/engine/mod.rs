@@ -1,13 +1,13 @@
 pub mod action;
 pub mod config;
-pub mod lens;
+pub mod transform;
 pub mod sequence;
 
 
 use std::collections::{HashMap, hash_map};
 
-use self::config::{Config, DelegationConfig};
-use self::lens::{Delegation, Lens};
+use self::config::{Config, StateConfig, TransformConfig};
+use self::transform::Transform;
 use self::sequence::{SequenceContext, SequenceIndex};
 
 
@@ -23,9 +23,7 @@ pub struct Action {
   base: State
 }
 
-pub struct LensRef {
-  index: usize
-}
+pub type TransformIndex = usize;
 
 
 #[derive(Default)]
@@ -36,8 +34,8 @@ impl<T> LabelMap<T> where T: Eq + Copy {
     self.0.insert(label.into(), value);
   }
 
-  pub fn get(&self, label: &str) -> Option<T> {
-    self.0.get(label.into()).copied()
+  pub fn get<S: AsRef<str>>(&self, label: S) -> Option<T> {
+    self.0.get(label.as_ref()).copied()
   }
 
   pub fn reverse_lookup(&self, value: T) -> Option<&String> {
@@ -57,7 +55,7 @@ pub struct Engine {
   states: Vec<State>,
   actions: Vec<Action>,
   pub sequence_context: SequenceContext<Action>,
-  pub lenses: Vec<Lens<State, SequenceIndex>>,
+  pub transforms: Vec<Transform<SequenceIndex>>,
 
   label_to_state: LabelMap<State>,
   label_to_action: LabelMap<Action>
@@ -71,29 +69,20 @@ impl Engine {
     let mut label_to_state = LabelMap::default();
     let mut label_to_action = LabelMap::default();
 
-    for state_config in config.states {
+    for StateConfig { label, actions } in config.states {
       let state = engine.new_state();
-      label_to_state.insert(state_config.label, state);
+      label_to_state.insert(label, state);
 
-      for action_label in state_config.actions {
+      for label in actions {
         let action = engine.new_action(state);
-        label_to_action.insert(action_label, action);
+        label_to_action.insert(label, action);
       }
     }
 
-    for lens_config in config.lenses {
-      engine.new_lens(
-        label_to_state.get(&lens_config.source).unwrap(),
-        label_to_state.get(&lens_config.target).unwrap(),
-        lens_config.delegations.into_iter()
-          .map(|DelegationConfig { from, to }| Delegation {
-            from: from.into_iter()
-              .map(|label| label_to_action.get(&label).unwrap())
-              .collect(),
-            to: to.into_iter()
-              .map(|label| label_to_action.get(&label).unwrap())
-              .collect()
-          })
+    for TransformConfig { from, to } in config.transforms {
+      engine.new_transform(
+        from.into_iter().map(|label| label_to_action.get(label).unwrap()),
+        to.into_iter().map(|label| label_to_action.get(label).unwrap())
       );
     }
 
@@ -111,6 +100,14 @@ impl Engine {
     self.label_to_action.reverse_lookup(action)
   }
 
+  pub fn lookup_actions<'a, S, I>(&'a self, labels: I) -> impl Iterator<Item = Action> + Clone + 'a
+  where
+    S: AsRef<str>,
+    I: 'a + Iterator<Item = S> + Clone
+  {
+    labels.map(|label| self.label_to_action.get(label).unwrap())
+  }
+
   pub fn lookup_action_labels<I: Iterator<Item = Action>>(&self, actions: I) -> Vec<&String> {
     actions
       .map(|action| self.lookup_action_label(action).unwrap())
@@ -123,16 +120,11 @@ impl Engine {
     )
   }
 
-  pub fn labeled_lenses(&self) -> Vec<Lens<&String, Vec<&String>>> {
-    self.lenses.iter()
-      .map(|Lens { source, target, data }| Lens {
-        source: self.lookup_state_label(*source).unwrap(),
-        target: self.lookup_state_label(*target).unwrap(),
-        data: data.iter().map(|&Delegation { from, to }| Delegation {
-            from: self.lookup_action_sequence_labels(from),
-            to: self.lookup_action_sequence_labels(to),
-          })
-          .collect()
+  pub fn labeled_transforms(&self) -> Vec<Transform<Vec<&String>>> {
+    self.transforms.iter()
+      .map(|&Transform { from, to }| Transform {
+        from: self.lookup_action_sequence_labels(from),
+        to: self.lookup_action_sequence_labels(to),
       })
       .collect()
   }
@@ -154,44 +146,43 @@ impl Engine {
     action
   }
 
-  fn new_lens<I: Iterator<Item = Delegation<Vec<Action>>>>(
-    &mut self,
-    source: State,
-    target: State,
-    delegations: I 
-  ) -> LensRef {
-    let lens = Lens {
-      source,
-      target,
-      data: delegations.map(|Delegation { from, to }| Delegation {
-          from: self.sequence_context.new_sequence(from.into_iter()).unwrap(),
-          to: self.sequence_context.new_sequence(to.into_iter()).unwrap()
-        })
-        .collect::<Vec<_>>()
-    };
+  fn new_transform<I1, I2>(&mut self, from: I1, to: I2) -> TransformIndex
+  where
+    I1: Iterator<Item = Action> + Clone,
+    I2: Iterator<Item = Action> + Clone
+  {
+    let index = self.transforms.len();
+    self.transforms.push(Transform {
+      from: self.sequence_context.new_sequence(from).unwrap(),
+      to: self.sequence_context.new_sequence(to).unwrap()
+    });
+    index
+  }
+
+  pub fn reduce_labeled<'a, S, I>(&self, labels: I) -> Option<&String>
+  where
+    S: AsRef<str>,
+    I: Iterator<Item = S> + Clone
+  {
+    self.reduce(
+      self.lookup_actions(labels)
+    ).and_then(|action|
+      self.lookup_action_label(action)
+    )
     
-    let lens_ref = LensRef {
-      index: self.lenses.len()
-    };
-    self.lenses.push(lens);
-    lens_ref
   }
 
   // `reduce` expects a _stack_ of actions, so that the most recent action is first.
-  pub fn reduce<'a, I: Iterator<Item = &'a str> + Clone>(&self, actions: I) -> Option<Action> {
-    let actions = actions.map(|label|
-      self.label_to_action.get(label).unwrap()
-    );
-    if let Some(index) = self.sequence_context.get_sequence(actions) {
-      for lens in &self.lenses {
-        for delegation in &lens.data {
-          if delegation.from == index {
-            return self.sequence_context.get_action(delegation.to);
-          }
-        }
-      }
-    } 
-
-    None
+  pub fn reduce<I: Iterator<Item = Action> + Clone>(&self, actions: I) -> Option<Action> {
+    self.sequence_context.get_sequence(actions)
+      .and_then(|index|
+        self.transforms.iter()
+          .find(|&transform|
+            transform.from == index
+          )
+          .and_then(|transform|
+            self.sequence_context.get_action(transform.to)
+          )
+      )
   }
 }
