@@ -19,16 +19,16 @@ fn main() {
     let engine = Engine::from_config(config);
 
     println!("Sequence Elements:");
-    for elem in &engine.sequence_context.data {
+    for elem in &engine.chains.data {
         println!("\t{:?}: action={:?}, next={:?}, prev={:?}", elem.index, engine.lookup_label(elem.action).unwrap(), elem.next, elem.prev);
     }
 
     println!("Transforms:");
-    for transform in &engine.transforms {
+    for transform in &engine.rules {
         println!("\t{:?}", transform);
     }
 
-    let sequences = [
+    let chains = [
         ["AtoA", "AtoA"],
         ["AtoA", "AtoB"],
         ["AtoB", "BtoA"],
@@ -39,7 +39,7 @@ fn main() {
         ["BtoB", "BtoB"]
     ];
 
-    for actions in sequences.into_iter() {
+    for actions in chains.into_iter() {
         reduce(&engine, &actions);
     }
     

@@ -1,10 +1,12 @@
 use serde::{Serialize, Deserialize};
 
 
+
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
   pub states: Vec<StateConfig>,
-  pub transforms: Vec<TransformConfig>,
+  pub groups: Vec<GroupConfig>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -14,7 +16,23 @@ pub struct StateConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct TransformConfig {
+pub enum GroupType {
+  Category,
+  Monad,
+  Iso
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GroupConfig {
+  pub label: String,
+  #[serde(rename = "type")]
+  pub group_type: Option<GroupType>,
+  pub states: Option<Vec<String>>,
+  pub rules: Vec<RuleConfig>
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RuleConfig {
   pub from: Vec<String>,
   pub to: Vec<String>
 }

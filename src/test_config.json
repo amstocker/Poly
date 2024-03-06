@@ -8,23 +8,32 @@
     { "label": "X",     "actions": ["0to0", "0to1"] },
     { "label": "Y",     "actions": ["1to0"] }
   ],
-  "transforms": [
-    { "from": ["AtoA", "AtoA"], "to": ["AtoA"] },
-    { "from": ["AtoA", "AtoB"], "to": ["AtoB"] },
-    { "from": ["AtoB", "BtoA"], "to": ["AtoA"] },
-    { "from": ["AtoB", "BtoB"], "to": ["AtoB"] },
-
-    { "from": ["BtoA", "AtoA"], "to": ["BtoA"] },
-    { "from": ["BtoA", "AtoB"], "to": ["BtoB"] },
-    { "from": ["BtoB", "BtoA"], "to": ["BtoA"] },
-    { "from": ["BtoB", "BtoB"], "to": ["BtoB"] },
-
-    { "from": ["IDENTITY"], "to": ["AtoA"] },
-    { "from": ["IDENTITY"], "to": ["BtoB"] },
-
-    { "from": ["0to0"], "to": ["AtoA"] },
-    { "from": ["0to1"], "to": ["AtoB"] },
-
-    { "from": ["1to0"], "to": ["BtoA"] }
+  "groups": [
+    {
+      "label": "state-machine",
+      "type": "Category",
+      "rules": [
+        { "from": ["AtoA", "AtoA"], "to": ["AtoA"] },
+        { "from": ["AtoA", "AtoB"], "to": ["AtoB"] },
+        { "from": ["AtoB", "BtoA"], "to": ["AtoA"] },
+        { "from": ["AtoB", "BtoB"], "to": ["AtoB"] },
+    
+        { "from": ["BtoA", "AtoA"], "to": ["BtoA"] },
+        { "from": ["BtoA", "AtoB"], "to": ["BtoB"] },
+        { "from": ["BtoB", "BtoA"], "to": ["BtoA"] },
+        { "from": ["BtoB", "BtoB"], "to": ["BtoB"] },
+    
+        { "from": ["IDENTITY"], "to": ["AtoA"] },
+        { "from": ["IDENTITY"], "to": ["BtoB"] }
+      ]
+    },
+    {
+      "label": "word-generator",
+      "rules": [
+        { "from": ["0to0"], "to": ["AtoA"] },
+        { "from": ["0to1"], "to": ["AtoB"] },
+        { "from": ["1to0"], "to": ["BtoA"] }
+      ]
+    }
   ]
 }

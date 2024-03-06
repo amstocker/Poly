@@ -1,16 +1,16 @@
 pub mod action;
 pub mod config;
 pub mod label;
-pub mod transform;
-pub mod sequence;
+pub mod rule;
+pub mod chain;
 
 
 use std::collections::{HashMap, HashSet};
 
-use self::config::{Config, StateConfig, TransformConfig};
+use self::config::{Config, GroupConfig, RuleConfig, StateConfig};
 use self::label::{LabelMap, Labeled};
-use self::transform::Transform;
-use self::sequence::{SequenceContext, SequenceIndex};
+use self::rule::Rule;
+use self::chain::{ChainContext, ChainIndex};
 
 
 
@@ -27,7 +27,7 @@ pub struct Action {
 
 pub type StateIndex = usize;
 pub type ActionIndex = usize;
-pub type TransformIndex = usize;
+pub type RuleIndex = usize;
 
 
 
@@ -35,11 +35,11 @@ pub type TransformIndex = usize;
 pub struct Engine {
   states: Vec<State>,
   actions: Vec<Action>,
-  pub sequence_context: SequenceContext<Action>,
-  pub transforms: Vec<Transform<SequenceIndex>>,
+  pub chains: ChainContext<Action>,
+  pub rules: Vec<Rule<ChainIndex>>,
 
   label_map: LabelMap,
-  transform_map: HashMap<SequenceIndex, HashSet<TransformIndex>>,
+  rule_map: HashMap<ChainIndex, HashSet<RuleIndex>>,
 }
 
 
@@ -48,7 +48,7 @@ impl Engine {
     let mut engine = Engine::default();
     
     let mut label_map = LabelMap::default();
-    let mut transform_map = HashMap::new();
+    let mut rule_map = HashMap::new();
 
     for StateConfig { label, actions } in config.states {
       let state = engine.new_state();
@@ -60,22 +60,24 @@ impl Engine {
       }
     }
 
-    for TransformConfig { from, to } in config.transforms {
-      let index = engine.new_transform(
-        from.into_iter().map(|label| label_map.get(label).unwrap()),
-        to.into_iter().map(|label| label_map.get(label).unwrap())
-      );
-      engine.transforms.get(index)
-        .map(|transform|
-          transform_map
-            .entry(transform.from)
-            .or_insert(HashSet::new())
-            .insert(index)
+    for GroupConfig { rules, .. } in config.groups {
+      for RuleConfig { from, to } in rules {
+        let index = engine.new_rule(
+          from.into_iter().map(|label| label_map.get(label).unwrap()),
+          to.into_iter().map(|label| label_map.get(label).unwrap())
         );
+        engine.rules.get(index)
+          .map(|rule|
+            rule_map
+              .entry(rule.from)
+              .or_insert(HashSet::new())
+              .insert(index)
+          );
+      }
     }
 
     engine.label_map = label_map;
-    engine.transform_map = transform_map;
+    engine.rule_map = rule_map;
 
     engine
   }
@@ -108,15 +110,15 @@ impl Engine {
     action
   }
 
-  fn new_transform(
+  fn new_rule(
     &mut self,
     from: impl Iterator<Item = Action> + Clone,
     to: impl Iterator<Item = Action> + Clone
-  ) -> TransformIndex {
-    let index = self.transforms.len();
-    self.transforms.push(Transform {
-      from: self.sequence_context.new_sequence(from).unwrap(),
-      to: self.sequence_context.new_sequence(to).unwrap()
+  ) -> RuleIndex {
+    let index = self.rules.len();
+    self.rules.push(Rule {
+      from: self.chains.new_chain(from).unwrap(),
+      to: self.chains.new_chain(to).unwrap()
     });
     index
   }
@@ -137,10 +139,10 @@ impl Engine {
     &self,
     actions: impl Iterator<Item = Action> + Clone
   ) -> Option<Action> {
-    self.sequence_context.get_sequence(actions)
-      .and_then(|index| self.transform_map.get(&index))
-      .and_then(|transforms| transforms.iter().next())
-      .and_then(|&index| self.transforms.get(index))
-      .and_then(|transform| self.sequence_context.get_action(transform.to))
+    self.chains.get_chain(actions)
+      .and_then(|index| self.rule_map.get(&index))
+      .and_then(|rules| rules.iter().next())
+      .and_then(|&index| self.rules.get(index))
+      .and_then(|rule| self.chains.get_action(rule.to))
   }
 }

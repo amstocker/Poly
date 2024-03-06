@@ -2,23 +2,23 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 
-pub type SequenceIndex = usize;
+pub type ChainIndex = usize;
 
 #[derive(Debug)]
-pub struct SequenceElem<A> {
-  pub index: SequenceIndex,
+pub struct Chain<A> {
+  pub index: ChainIndex,
   pub action: A,
-  pub prev: Option<SequenceIndex>,
-  pub next: HashSet<SequenceIndex>
+  pub prev: Option<ChainIndex>,
+  pub next: HashSet<ChainIndex>
 }
 
 #[derive(Clone, Copy)]
-pub struct SequenceIter<'a, A> {
-  context: &'a SequenceContext<A>,
-  index: Option<SequenceIndex>
+pub struct ChainIter<'a, A> {
+  context: &'a ChainContext<A>,
+  index: Option<ChainIndex>
 }
 
-impl<'a, A> Iterator for SequenceIter<'a, A> where A: Copy {
+impl<'a, A> Iterator for ChainIter<'a, A> where A: Copy {
   type Item = A;
   
   fn next(&mut self) -> Option<A> {
@@ -34,16 +34,16 @@ impl<'a, A> Iterator for SequenceIter<'a, A> where A: Copy {
 
 
 #[derive(Debug)]
-pub struct SequenceContext<A> {
+pub struct ChainContext<A> {
   id: usize,
-  pub data: Vec<SequenceElem<A>>
+  pub data: Vec<Chain<A>>
 }
 
-impl<A> PartialEq for SequenceContext<A> {
+impl<A> PartialEq for ChainContext<A> {
     fn eq(&self, other: &Self) -> bool { self.id == other.id }
 }
 
-impl<A> Default for SequenceContext<A> {
+impl<A> Default for ChainContext<A> {
     fn default() -> Self {
       Self {
         id: (|| {
@@ -55,19 +55,19 @@ impl<A> Default for SequenceContext<A> {
     }
 }
 
-impl<A> SequenceContext<A>
+impl<A> ChainContext<A>
 where
   A: Eq + Copy
 {
-  pub fn new_sequence(&mut self, actions: impl Iterator<Item = A> + Clone) -> Option<SequenceIndex> {
-    self.add_sequence(actions, None)
+  pub fn new_chain(&mut self, actions: impl Iterator<Item = A> + Clone) -> Option<ChainIndex> {
+    self.new_chain_with_prev(actions, None)
   }
 
-  pub fn add_sequence(
+  pub fn new_chain_with_prev(
     &mut self,
     mut actions: impl Iterator<Item = A> + Clone,
-    prev: Option<SequenceIndex>
-  ) -> Option<SequenceIndex> {
+    prev: Option<ChainIndex>
+  ) -> Option<ChainIndex> {
     actions.next()
       .and_then(|action| {
         let index = if let Some(elem) = self.data.iter().find(|&elem|
@@ -77,7 +77,7 @@ where
           elem.index
         } else {
           let index = self.data.len();
-          self.data.push(SequenceElem { index, action, prev, next: HashSet::new() });
+          self.data.push(Chain { index, action, prev, next: HashSet::new() });
           index
         };
 
@@ -86,43 +86,43 @@ where
             .map(|elem| elem.next.insert(index))
         );
 
-        self.add_sequence(actions, Some(index))
+        self.new_chain_with_prev(actions, Some(index))
       })
       .or(prev)
   }
 
-  // `get_sequence` expects a _stack_ of actions (i.e. most recent action first!)
-  pub fn get_sequence(
+  // `get_chain` expects a _stack_ of actions (i.e. most recent action first!)
+  pub fn get_chain(
     &self,
     actions: impl Iterator<Item = A> + Clone
-  ) -> Option<SequenceIndex> {
+  ) -> Option<ChainIndex> {
     self.data.iter()
-      .filter(|&elem| self.is_same_sequence(actions.clone(), Some(elem.index)))
+      .filter(|&elem| self.is_same_chain(actions.clone(), Some(elem.index)))
       .map(|elem| elem.index)
       .next()
   }
 
-  // ``is_same_sequence` also expects a _stack_ of actions.
-  pub fn is_same_sequence(
+  // ``is_same_chain` also expects a _stack_ of actions.
+  pub fn is_same_chain(
     &self,
     mut actions: impl Iterator<Item = A> + Clone,
-    index: Option<SequenceIndex>
+    index: Option<ChainIndex>
   ) -> bool {
     match (actions.next(), index.and_then(|index| self.data.get(index))) {
         (Some(action), Some(elem)) =>
           elem.action == action
-          && self.is_same_sequence(actions, elem.prev),
+          && self.is_same_chain(actions, elem.prev),
         (None, None) => true,
         (_, _) => false
     }
   }
 
-  pub fn get_action(&self, index: SequenceIndex) -> Option<A> {
+  pub fn get_action(&self, index: ChainIndex) -> Option<A> {
     self.data.get(index).map(|elem| elem.action)
   }
 
-  pub fn get_action_sequence(&self, index: SequenceIndex) -> SequenceIter<A> {
-    SequenceIter { context: &self, index: Some(index) }
+  pub fn get_action_chain(&self, index: ChainIndex) -> ChainIter<A> {
+    ChainIter { context: &self, index: Some(index) }
   }
 }
 
