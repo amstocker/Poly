@@ -20,7 +20,7 @@ fn main() {
 
     println!("Sequence Elements:");
     for elem in &engine.sequence_context.data {
-        println!("\t{:?}: action={:?}, next={:?}, prev={:?}", elem.index, engine.lookup_action_label(elem.action).unwrap(), elem.next, elem.prev);
+        println!("\t{:?}: action={:?}, next={:?}, prev={:?}", elem.index, engine.lookup_label(elem.action).unwrap(), elem.next, elem.prev);
     }
 
     println!("Transforms:");
