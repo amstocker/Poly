@@ -2,7 +2,6 @@ use serde::{Serialize, Deserialize};
 
 
 
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
   pub states: Vec<StateConfig>,
@@ -16,7 +15,7 @@ pub struct StateConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum GroupType {
+pub enum GroupTypeConfig {
   Category,
   Monad,
   Iso
@@ -26,7 +25,7 @@ pub enum GroupType {
 pub struct GroupConfig {
   pub label: String,
   #[serde(rename = "type")]
-  pub group_type: Option<GroupType>,
+  pub group_type: Option<GroupTypeConfig>,
   pub states: Option<Vec<String>>,
   pub rules: Vec<RuleConfig>
 }

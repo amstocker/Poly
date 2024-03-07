@@ -1,13 +1,16 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
 use crate::engine::{Action, State};
+use crate::engine::rule::Group;
 
 
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Labeled {
   Action(Action),
-  State(State)
+  State(State),
+  Group(Group)
 }
 
 impl Into<Labeled> for State {
@@ -19,6 +22,12 @@ impl Into<Labeled> for State {
 impl Into<Labeled> for Action {
   fn into(self) -> Labeled {
     Labeled::Action(self)
+  }
+}
+
+impl Into<Labeled> for Group {
+  fn into(self) -> Labeled {
+    Labeled::Group(self)
   }
 }
 
@@ -35,7 +44,16 @@ impl From<Labeled> for Option<Action> {
   fn from(value: Labeled) -> Option<Action> {
     match value {
       Labeled::Action(action) => Some(action),
-      _ => None,
+      _ => None
+    }
+  }
+}
+
+impl From<Labeled> for Option<Group> {
+  fn from(value: Labeled) -> Self {
+    match value {
+      Labeled::Group(group) => Some(group),
+      _ => None
     }
   }
 }
@@ -68,5 +86,47 @@ impl LabelMap {
   {
     self.0.iter()
       .filter_map(|(_, &value)| value.into())
+  }
+}
+
+
+
+pub trait Indexed {
+  type Config;
+
+  fn build_with_index(index: usize, config: Self::Config) -> Self;
+}
+
+pub struct Index<T> {
+  index: usize,
+  marker: PhantomData<T>
+}
+
+impl Indexed for State {
+  type Config = ();
+
+  fn build_with_index(index: usize, _: ()) -> Self {
+    State { index }
+  }
+}
+
+impl Indexed for Action {
+  type Config = State;
+
+  fn build_with_index(index: usize, state: State) -> Self {
+    Action { index, base: state } 
+  }
+}
+
+#[derive(Default)]
+pub struct IndexedHandler<T> {
+  data: Vec<T>
+}
+
+impl<T> IndexedHandler<T> where T: Indexed + Copy {
+  pub fn new(&mut self, config: T::Config) -> T {
+    let value = T::build_with_index(self.data.len(), config);
+    self.data.push(value);
+    value
   }
 }

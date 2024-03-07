@@ -6,10 +6,10 @@ pub type ChainIndex = usize;
 
 #[derive(Debug)]
 pub struct Chain<A> {
-  pub index: ChainIndex,
-  pub action: A,
-  pub prev: Option<ChainIndex>,
-  pub next: HashSet<ChainIndex>
+  index: ChainIndex,
+  action: A,
+  prev: Option<ChainIndex>,
+  next: HashSet<ChainIndex>
 }
 
 #[derive(Clone, Copy)]
@@ -36,7 +36,7 @@ impl<'a, A> Iterator for ChainIter<'a, A> where A: Copy {
 #[derive(Debug)]
 pub struct ChainContext<A> {
   id: usize,
-  pub data: Vec<Chain<A>>
+  data: Vec<Chain<A>>
 }
 
 impl<A> PartialEq for ChainContext<A> {
