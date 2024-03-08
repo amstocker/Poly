@@ -1,15 +1,15 @@
 pub mod action;
-pub mod config;
-pub mod util;
-pub mod rule;
 pub mod chain;
+pub mod config;
+pub mod rule;
+pub mod util;
 
 
 use std::collections::{HashMap, HashSet};
 
-use self::config::{Config, GroupConfig, RuleConfig, StateConfig};
+use self::config::{Config, LensConfig, RuleConfig, StateConfig};
 use self::util::{LabelMap, Labeled, IndexedHandler};
-use self::rule::{Rule, Group};
+use self::rule::{Rule, Lens};
 use self::chain::{ChainContext, ChainIndex};
 
 
@@ -61,8 +61,8 @@ impl Engine {
       }
     }
 
-    for GroupConfig { label, rules, .. } in config.groups {
-      label_map.insert(label, Group {});
+    for LensConfig { label, rules, .. } in config.lenses {
+      label_map.insert(label, Lens {});
       for RuleConfig { from, to } in rules {
         let rule = Rule {
           from: engine.targets.new_chain(
@@ -116,20 +116,28 @@ impl Engine {
     )
   }
 
-  // `reduce` expects a _stack_ of actions, so that the most recent action is first.
-  pub fn reduce(
-    &self,
-    actions: impl Iterator<Item = Action> + Clone
-  ) -> Option<Action> {
-    self.targets.get_chain(actions)
+}
 
+
+pub trait Reducer<O: Eq + Copy> {
+  fn reduce(&self, outer: impl Iterator<Item = O> + Clone) -> Option<O>;
+}
+
+impl Reducer<Action> for Engine {
+  fn reduce(&self, actions: impl Iterator<Item = Action> + Clone) -> Option<Action> {
+    self.targets.get_chain(actions)
+  
       // Get all rules which transform from the given action chain.
       .and_then(|index| self.rule_source_map.get(&index))
-
+  
       // Pick the first rule (in the future handle the ambiguity).
       .and_then(|rules| rules.iter().next())
-
+  
       // Get the action that corresponds to the sequence that the rule transforms to.
       .and_then(|rule| self.sources.get_action(rule.to))
   }
+}
+
+pub trait Middleware<O: Eq + Copy, I: Eq + Copy> {
+  fn reduce(&self, outer: impl Iterator<Item = O> + Clone) -> impl Iterator<Item = I> + Clone;
 }

@@ -15,7 +15,7 @@ fn reduce(engine: &Engine, actions: &[&str]) {
 }
 
 fn main() {
-    let config = serde_json::from_str::<Config>(include_str!("test_config.json")).unwrap();
+    let config = serde_json::from_str::<Config>(include_str!("../test_config.json")).unwrap();
     let engine = Engine::from_config(config);
 
     let chains = [
@@ -32,6 +32,4 @@ fn main() {
     for actions in chains.into_iter() {
         reduce(&engine, &actions);
     }
-    
-
 }

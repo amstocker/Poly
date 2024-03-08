@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use crate::engine::{Action, State};
-use crate::engine::rule::Group;
+use crate::engine::rule::Lens;
 
 
 
@@ -10,7 +10,7 @@ use crate::engine::rule::Group;
 pub enum Labeled {
   Action(Action),
   State(State),
-  Group(Group)
+  Lens(Lens)
 }
 
 impl Into<Labeled> for State {
@@ -25,9 +25,9 @@ impl Into<Labeled> for Action {
   }
 }
 
-impl Into<Labeled> for Group {
+impl Into<Labeled> for Lens {
   fn into(self) -> Labeled {
-    Labeled::Group(self)
+    Labeled::Lens(self)
   }
 }
 
@@ -49,10 +49,10 @@ impl From<Labeled> for Option<Action> {
   }
 }
 
-impl From<Labeled> for Option<Group> {
+impl From<Labeled> for Option<Lens> {
   fn from(value: Labeled) -> Self {
     match value {
-      Labeled::Group(group) => Some(group),
+      Labeled::Lens(lens) => Some(lens),
       _ => None
     }
   }

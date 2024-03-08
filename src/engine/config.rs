@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
   pub states: Vec<StateConfig>,
-  pub groups: Vec<GroupConfig>,
+  pub lenses: Vec<LensConfig>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -15,19 +15,20 @@ pub struct StateConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum GroupTypeConfig {
+pub enum LensTypeConfig {
   Category,
   Monad,
   Iso
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct GroupConfig {
+pub struct LensConfig {
   pub label: String,
+  pub rules: Vec<RuleConfig>,
+  
   #[serde(rename = "type")]
-  pub group_type: Option<GroupTypeConfig>,
+  pub lens_type: Option<LensTypeConfig>,
   pub states: Option<Vec<String>>,
-  pub rules: Vec<RuleConfig>
 }
 
 #[derive(Serialize, Deserialize, Debug)]

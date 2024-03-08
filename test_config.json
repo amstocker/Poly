@@ -8,7 +8,7 @@
     { "label": "X",     "actions": ["0to0", "0to1"] },
     { "label": "Y",     "actions": ["1to0"] }
   ],
-  "groups": [
+  "lenses": [
     {
       "label": "state-machine",
       "type": "Category",
