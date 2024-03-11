@@ -1,5 +1,6 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::hash::Hash;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 
@@ -7,11 +8,11 @@ pub type ChainIndex = usize;
 
 #[derive(Debug)]
 pub struct ChainElem<A> {
-  pub index: ChainIndex,
-  pub action: A,
-  pub prev: Option<ChainIndex>,
-  pub next: HashSet<ChainIndex>,
-  pub is_end: bool
+  index: ChainIndex,
+  action: A,
+  prev: Option<ChainIndex>,
+  next: HashSet<ChainIndex>,
+  is_end: bool
 }
 
 #[derive(Clone, Copy)]
@@ -26,17 +27,19 @@ impl<'a, A> Iterator for ChainIter<'a, A> where A: Copy {
   fn next(&mut self) -> Option<A> {
     self.index.and_then(|index|
       self.context.data.get(index)
-        .map(|elem| {
-          self.index = elem.prev;
-          elem.action
-        })
-    )
+    ).map(|elem| {
+      self.index = elem.prev;
+      elem.action
+    })
   }
 }
 
 
+#[derive(Debug)]
 pub enum Recognized<A> {
-  All,
+  All {
+    queue: Vec<A>
+  },
   Partial {
     queue: Vec<A>
   },
@@ -45,9 +48,11 @@ pub enum Recognized<A> {
   }
 }
 
+#[derive(Debug)]
 pub enum RecognizedIndex<A> {
   All {
-    index: ChainIndex
+    index: ChainIndex,
+    queue: Vec<A>
   },
   Partial {
     index: ChainIndex,
@@ -61,7 +66,7 @@ pub enum RecognizedIndex<A> {
 impl<A> Recognized<A> {
   pub fn with_index(self, index: ChainIndex) -> RecognizedIndex<A> {
     match self {
-        Recognized::All => RecognizedIndex::All { index },
+        Recognized::All { queue } => RecognizedIndex::All { index, queue },
         Recognized::Partial { queue } => RecognizedIndex::Partial { index, queue },
         Recognized::Error { queue } => RecognizedIndex::Error { queue }
     }
@@ -71,7 +76,7 @@ impl<A> Recognized<A> {
 impl<A> From<RecognizedIndex<A>> for Option<ChainIndex> {
   fn from(value: RecognizedIndex<A>) -> Self {
     match value {
-      RecognizedIndex::All { index } => Some(index),
+      RecognizedIndex::All { index, .. } => Some(index),
       RecognizedIndex::Partial { index, .. } => Some(index),
       RecognizedIndex::Error { .. } => None
     }
@@ -80,9 +85,18 @@ impl<A> From<RecognizedIndex<A>> for Option<ChainIndex> {
 
 
 #[derive(Debug)]
+pub enum ChainDirection {
+  Forward,
+  Backward
+}
+
+
+#[derive(Debug)]
 pub struct ChainContext<A> {
   id: usize,
-  pub data: Vec<ChainElem<A>>
+  data: Vec<ChainElem<A>>,
+  direction: ChainDirection,
+  ends: HashMap<A, HashSet<ChainIndex>>
 }
 
 impl<A> PartialEq for ChainContext<A> {
@@ -96,14 +110,16 @@ impl<A> Default for ChainContext<A> {
           static COUNTER: AtomicUsize = AtomicUsize::new(1);
           COUNTER.fetch_add(1, Ordering::Relaxed)
         })(),
-        data: Vec::new()
+        data: Vec::new(),
+        direction: ChainDirection::Forward,
+        ends: HashMap::new()
       }
     }
 }
 
 impl<A> ChainContext<A>
 where
-  A: Eq + Copy
+  A: Eq + Copy + Hash + Debug
 {
   pub fn new_chain(&mut self, actions: impl Iterator<Item = A>) -> Option<ChainIndex> {
     let index = self.new_chain_with_prev(actions, None)?;
@@ -167,7 +183,7 @@ where
       queue.pop(),
       index.and_then(|index| self.data.get(index))
     ) {
-      (Some(action), Some(elem)) => {
+      (Some(action), Some(elem)) =>
         if elem.action == action {
           match self.recognize_chain_at_index(queue, elem.prev) {
             Recognized::Error { mut queue } => {
@@ -179,17 +195,16 @@ where
         } else {
           queue.push(action);
           Recognized::Error { queue }
-        }
       },
       (Some(action), None) => {
         queue.push(action);
-        Recognized::Error { queue }
-      },
-      (None, Some(_)) => {
         Recognized::Partial { queue }
       },
       (None, None) => {
-        Recognized::All
+        Recognized::All { queue }
+      },
+      (None, Some(_)) => {
+        Recognized::Error { queue }
       }
     }
   }

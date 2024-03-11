@@ -33,12 +33,12 @@ pub struct Action {
 pub struct Engine {
   states: IndexedHandler<State>,
   actions: IndexedHandler<Action>,
-  pub targets: ChainContext<Action>,
-  pub sources: ChainContext<Action>,
+  targets: ChainContext<Action>,
+  sources: ChainContext<Action>,
 
   label_map: LabelMap,
   base_state_map: HashMap<Action, State>,
-  pub rule_source_map: HashMap<ChainIndex, HashSet<Rule<ChainIndex>>>,
+  rule_source_map: HashMap<ChainIndex, HashSet<Rule<ChainIndex>>>,
 }
 
 
@@ -107,21 +107,34 @@ impl Engine {
   pub fn reduce_labeled<'a, S: AsRef<str>>(
     &self,
     labels: impl Iterator<Item = S> + Clone
-  ) -> Option<&String> {
-    self.reduce(
-      self.lookup_actions(labels).collect()
-    ).and_then(|action|
-      self.lookup_label(action)
-    )
+  ) -> Vec<&String> {
+    let queue = self.reduce(self.lookup_actions(labels).collect());
+    queue.unwrap().iter().map(|&action| self.lookup_label(action).unwrap()).collect::<Vec<_>>()
   }
 
-  fn reduce(&self, mut queue: Vec<Action>) -> Option<Action> {
-    if let Some(index) = self.targets.recognize_chain(queue).into() {
-      self.rule_source_map.get(&index)
-        .and_then(|rules| rules.iter().next())
-        .and_then(|rule| self.sources.get_action(rule.to))
-    } else {
-      None
+  fn reduce(&self, mut queue: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
+    loop {
+      queue = match self.targets.recognize_chain(queue) {
+        chain::RecognizedIndex::All { index, mut queue } => {
+          let actions = self.rule_source_map.get(&index)
+            .and_then(|rules| rules.iter().next())
+            .map(|rule| self.sources.get_action_chain(rule.to).collect::<Vec<_>>())
+            .unwrap();
+          queue.extend(actions);
+          return Ok(queue);
+        },
+        chain::RecognizedIndex::Partial { index, mut queue } => {
+          let actions = self.rule_source_map.get(&index)
+            .and_then(|rules| rules.iter().next())
+            .map(|rule| self.sources.get_action_chain(rule.to).collect::<Vec<_>>())
+            .unwrap();
+          queue.extend(actions);
+          queue
+        },
+        chain::RecognizedIndex::Error { queue } => {
+          return Err(queue);
+        },
+      }
     }
   }
 
