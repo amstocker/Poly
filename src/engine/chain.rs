@@ -45,6 +45,39 @@ pub enum Recognized<A> {
   }
 }
 
+pub enum RecognizedIndex<A> {
+  All {
+    index: ChainIndex
+  },
+  Partial {
+    index: ChainIndex,
+    queue: Vec<A>
+  },
+  Error {
+    queue: Vec<A>
+  }
+}
+
+impl<A> Recognized<A> {
+  pub fn with_index(self, index: ChainIndex) -> RecognizedIndex<A> {
+    match self {
+        Recognized::All => RecognizedIndex::All { index },
+        Recognized::Partial { queue } => RecognizedIndex::Partial { index, queue },
+        Recognized::Error { queue } => RecognizedIndex::Error { queue }
+    }
+  }
+}
+
+impl<A> From<RecognizedIndex<A>> for Option<ChainIndex> {
+  fn from(value: RecognizedIndex<A>) -> Self {
+    match value {
+      RecognizedIndex::All { index } => Some(index),
+      RecognizedIndex::Partial { index, .. } => Some(index),
+      RecognizedIndex::Error { .. } => None
+    }
+  }
+}
+
 
 #[derive(Debug)]
 pub struct ChainContext<A> {
@@ -117,19 +150,16 @@ where
     self.data.iter().filter(|elem| elem.is_end)
   }
 
-  pub fn recognize_chain(&self, mut queue: Vec<A>) -> (Option<ChainIndex>, Option<Vec<A>>) {
+  pub fn recognize_chain(&self, mut queue: Vec<A>) -> RecognizedIndex<A> {
     for elem in self.iter_ends() {
       queue = match self.recognize_chain_at_index(queue, Some(elem.index)) {
         Recognized::Error { queue } => queue,
-        Recognized::Partial { queue } => {
-          return (Some(elem.index), Some(queue));
-        },
-        Recognized::All => {
-          return (Some(elem.index), None);
+        result => {
+          return result.with_index(elem.index);
         }
       }
     }
-    (None, Some(queue))
+    RecognizedIndex::Error { queue }
   }
 
   pub fn recognize_chain_at_index(&self, mut queue: Vec<A>, index: Option<ChainIndex>) -> Recognized<A> {

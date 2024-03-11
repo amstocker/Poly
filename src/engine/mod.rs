@@ -115,11 +115,11 @@ impl Engine {
     )
   }
 
-  fn reduce(&self, queue: Vec<Action>) -> Option<Action> {
-    if let (Some(index), _) = self.targets.recognize_chain(queue) {
+  fn reduce(&self, mut queue: Vec<Action>) -> Option<Action> {
+    if let Some(index) = self.targets.recognize_chain(queue).into() {
       self.rule_source_map.get(&index)
         .and_then(|rules| rules.iter().next())
-        .and_then(|rule| self.sources.get_action(rule.to)) 
+        .and_then(|rule| self.sources.get_action(rule.to))
     } else {
       None
     }
