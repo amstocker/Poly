@@ -10,7 +10,7 @@ use self::engine::config::Config;
 fn reduce(engine: &Engine, actions: &[&str]) {
     println!("{:?} -> {:?}",
         actions,
-        engine.reduce_labeled(actions.into_iter().rev())
+        engine.reduce_labeled(actions.into_iter())
     );
 }
 

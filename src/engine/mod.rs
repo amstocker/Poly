@@ -6,11 +6,12 @@ pub mod util;
 
 
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 
 use self::config::{Config, LensConfig, RuleConfig, StateConfig};
 use self::util::{LabelMap, Labeled, IndexedHandler};
 use self::rule::{Rule, Lens};
-use self::chain::{ChainContext, ChainIndex};
+use self::chain::{ChainContext, ChainIndex, Recognized};
 
 
 
@@ -24,8 +25,7 @@ pub struct State {
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Default, Debug)]
 pub struct Action {
-  index: ActionIndex,
-  base: State
+  index: ActionIndex
 }
 
 
@@ -33,12 +33,12 @@ pub struct Action {
 pub struct Engine {
   states: IndexedHandler<State>,
   actions: IndexedHandler<Action>,
-  targets: ChainContext<Action>,
-  sources: ChainContext<Action>,
+  pub targets: ChainContext<Action>,
+  pub sources: ChainContext<Action>,
 
   label_map: LabelMap,
-  state_map: HashMap<Action, State>,
-  rule_source_map: HashMap<ChainIndex, HashSet<Rule<ChainIndex>>>,
+  base_state_map: HashMap<Action, State>,
+  pub rule_source_map: HashMap<ChainIndex, HashSet<Rule<ChainIndex>>>,
 }
 
 
@@ -48,16 +48,16 @@ impl Engine {
     
     let mut label_map = LabelMap::default();
     let mut rule_map = HashMap::new();
-    let mut state_map = HashMap::new();
+    let mut base_state_map = HashMap::new();
 
     for StateConfig { label, actions } in config.states {
       let state = engine.new_state();
       label_map.insert(label, state);
 
       for label in actions {
-        let action = engine.new_action(state);
+        let action = engine.new_action();
         label_map.insert(label, action);
-        state_map.insert(action, state);
+        base_state_map.insert(action, state);
       }
     }
 
@@ -80,9 +80,8 @@ impl Engine {
     }
 
     engine.label_map = label_map;
-    engine.state_map = state_map;
+    engine.base_state_map = base_state_map;
     engine.rule_source_map = rule_map;
-
     engine
   }
 
@@ -98,11 +97,11 @@ impl Engine {
   }
 
   fn new_state(&mut self) -> State {
-    self.states.new(())
+    self.states.new()
   }
 
-  fn new_action(&mut self, base: State) -> Action {
-    self.actions.new(base)
+  fn new_action(&mut self) -> Action {
+    self.actions.new()
   }
 
   pub fn reduce_labeled<'a, S: AsRef<str>>(
@@ -110,34 +109,20 @@ impl Engine {
     labels: impl Iterator<Item = S> + Clone
   ) -> Option<&String> {
     self.reduce(
-      self.lookup_actions(labels)
+      self.lookup_actions(labels).collect()
     ).and_then(|action|
       self.lookup_label(action)
     )
   }
 
-}
-
-
-pub trait Reducer<O: Eq + Copy> {
-  fn reduce(&self, outer: impl Iterator<Item = O> + Clone) -> Option<O>;
-}
-
-impl Reducer<Action> for Engine {
-  fn reduce(&self, actions: impl Iterator<Item = Action> + Clone) -> Option<Action> {
-    self.targets.get_chain(actions)
-  
-      // Get all rules which transform from the given action chain.
-      .and_then(|index| self.rule_source_map.get(&index))
-  
-      // Pick the first rule (in the future handle the ambiguity).
-      .and_then(|rules| rules.iter().next())
-  
-      // Get the action that corresponds to the sequence that the rule transforms to.
-      .and_then(|rule| self.sources.get_action(rule.to))
+  fn reduce(&self, queue: Vec<Action>) -> Option<Action> {
+    if let (Some(index), _) = self.targets.recognize_chain(queue) {
+      self.rule_source_map.get(&index)
+        .and_then(|rules| rules.iter().next())
+        .and_then(|rule| self.sources.get_action(rule.to)) 
+    } else {
+      None
+    }
   }
-}
 
-pub trait Middleware<O: Eq + Copy, I: Eq + Copy> {
-  fn reduce(&self, outer: impl Iterator<Item = O> + Clone) -> impl Iterator<Item = I> + Clone;
 }

@@ -1,15 +1,17 @@
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 
 pub type ChainIndex = usize;
 
 #[derive(Debug)]
-pub struct Chain<A> {
-  index: ChainIndex,
-  action: A,
-  prev: Option<ChainIndex>,
-  next: HashSet<ChainIndex>
+pub struct ChainElem<A> {
+  pub index: ChainIndex,
+  pub action: A,
+  pub prev: Option<ChainIndex>,
+  pub next: HashSet<ChainIndex>,
+  pub is_end: bool
 }
 
 #[derive(Clone, Copy)]
@@ -33,10 +35,21 @@ impl<'a, A> Iterator for ChainIter<'a, A> where A: Copy {
 }
 
 
+pub enum Recognized<A> {
+  All,
+  Partial {
+    queue: Vec<A>
+  },
+  Error {
+    queue: Vec<A>
+  }
+}
+
+
 #[derive(Debug)]
 pub struct ChainContext<A> {
   id: usize,
-  data: Vec<Chain<A>>
+  pub data: Vec<ChainElem<A>>
 }
 
 impl<A> PartialEq for ChainContext<A> {
@@ -59,13 +72,16 @@ impl<A> ChainContext<A>
 where
   A: Eq + Copy
 {
-  pub fn new_chain(&mut self, actions: impl Iterator<Item = A> + Clone) -> Option<ChainIndex> {
-    self.new_chain_with_prev(actions, None)
+  pub fn new_chain(&mut self, actions: impl Iterator<Item = A>) -> Option<ChainIndex> {
+    let index = self.new_chain_with_prev(actions, None)?;
+    let elem = self.data.get_mut(index)?;
+    elem.is_end = true;
+    Some(index)
   }
 
   pub fn new_chain_with_prev(
     &mut self,
-    mut actions: impl Iterator<Item = A> + Clone,
+    mut actions: impl Iterator<Item = A>,
     prev: Option<ChainIndex>
   ) -> Option<ChainIndex> {
     actions.next()
@@ -77,7 +93,13 @@ where
           elem.index
         } else {
           let index = self.data.len();
-          self.data.push(Chain { index, action, prev, next: HashSet::new() });
+          self.data.push(ChainElem {
+            index,
+            action,
+            prev,
+            next: HashSet::new(),
+            is_end: false
+          });
           index
         };
 
@@ -91,29 +113,54 @@ where
       .or(prev)
   }
 
-  // `get_chain` expects a _stack_ of actions (i.e. most recent action first!)
-  pub fn get_chain(
-    &self,
-    actions: impl Iterator<Item = A> + Clone
-  ) -> Option<ChainIndex> {
-    self.data.iter()
-      .filter(|&elem| self.is_same_chain(actions.clone(), Some(elem.index)))
-      .map(|elem| elem.index)
-      .next()
+  fn iter_ends(&self) -> impl Iterator<Item = &ChainElem<A>> {
+    self.data.iter().filter(|elem| elem.is_end)
   }
 
-  // ``is_same_chain` also expects a _stack_ of actions.
-  pub fn is_same_chain(
-    &self,
-    mut actions: impl Iterator<Item = A> + Clone,
-    index: Option<ChainIndex>
-  ) -> bool {
-    match (actions.next(), index.and_then(|index| self.data.get(index))) {
-        (Some(action), Some(elem)) =>
-          elem.action == action
-          && self.is_same_chain(actions, elem.prev),
-        (None, None) => true,
-        (_, _) => false
+  pub fn recognize_chain(&self, mut queue: Vec<A>) -> (Option<ChainIndex>, Option<Vec<A>>) {
+    for elem in self.iter_ends() {
+      queue = match self.recognize_chain_at_index(queue, Some(elem.index)) {
+        Recognized::Error { queue } => queue,
+        Recognized::Partial { queue } => {
+          return (Some(elem.index), Some(queue));
+        },
+        Recognized::All => {
+          return (Some(elem.index), None);
+        }
+      }
+    }
+    (None, Some(queue))
+  }
+
+  pub fn recognize_chain_at_index(&self, mut queue: Vec<A>, index: Option<ChainIndex>) -> Recognized<A> {
+    match (
+      queue.pop(),
+      index.and_then(|index| self.data.get(index))
+    ) {
+      (Some(action), Some(elem)) => {
+        if elem.action == action {
+          match self.recognize_chain_at_index(queue, elem.prev) {
+            Recognized::Error { mut queue } => {
+              queue.push(action);
+              Recognized::Error { queue }
+            },
+            result => result
+          }
+        } else {
+          queue.push(action);
+          Recognized::Error { queue }
+        }
+      },
+      (Some(action), None) => {
+        queue.push(action);
+        Recognized::Error { queue }
+      },
+      (None, Some(_)) => {
+        Recognized::Partial { queue }
+      },
+      (None, None) => {
+        Recognized::All
+      }
     }
   }
 
@@ -125,7 +172,6 @@ where
     ChainIter { context: &self, index: Some(index) }
   }
 }
-
 
 
 

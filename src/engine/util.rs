@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map};
 use std::marker::PhantomData;
 
 use crate::engine::{Action, State};
@@ -87,14 +87,16 @@ impl LabelMap {
     self.0.iter()
       .filter_map(|(_, &value)| value.into())
   }
+
+  pub fn iter_all(&self) -> hash_map::Iter<String, Labeled> {
+    self.0.iter()
+  }
 }
 
 
 
 pub trait Indexed {
-  type Config;
-
-  fn build_with_index(index: usize, config: Self::Config) -> Self;
+  fn build_with_index(index: usize) -> Self;
 }
 
 pub struct Index<T> {
@@ -102,19 +104,16 @@ pub struct Index<T> {
   marker: PhantomData<T>
 }
 
-impl Indexed for State {
-  type Config = ();
 
-  fn build_with_index(index: usize, _: ()) -> Self {
+impl Indexed for State {
+  fn build_with_index(index: usize) -> Self {
     State { index }
   }
 }
 
 impl Indexed for Action {
-  type Config = State;
-
-  fn build_with_index(index: usize, state: State) -> Self {
-    Action { index, base: state } 
+  fn build_with_index(index: usize) -> Self {
+    Action { index } 
   }
 }
 
@@ -124,8 +123,8 @@ pub struct IndexedHandler<T> {
 }
 
 impl<T> IndexedHandler<T> where T: Indexed + Copy {
-  pub fn new(&mut self, config: T::Config) -> T {
-    let value = T::build_with_index(self.data.len(), config);
+  pub fn new(&mut self) -> T {
+    let value = T::build_with_index(self.data.len());
     self.data.push(value);
     value
   }
