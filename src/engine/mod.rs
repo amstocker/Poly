@@ -88,14 +88,9 @@ impl Engine {
     queue.unwrap().iter().map(|&action| self.label_map.reverse_lookup(action).unwrap()).collect::<Vec<_>>()
   }
 
-  // TODO: Ensure that sources iterate in the correct direction...
   fn iter_source<'a>(&'a self, target: ChainIndex) -> impl Iterator<Item = Action> + 'a {
     self.rule_map.get(&target)
-
-      // Pick the first rule that has `from` equal to the target.
       .and_then(|rules| rules.iter().next())
-
-      // Use that to iterate over the actions at the source.
       .map(|rule| self.sources.get_chain(rule.to))
       .unwrap()
   }
