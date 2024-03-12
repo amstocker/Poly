@@ -6,13 +6,11 @@
     { "label": "B",     "actions": ["BtoA", "BtoB"] },
 
     { "label": "X",     "actions": ["0to0", "0to1"] },
-    { "label": "Y",     "actions": ["1to0"] },
-
-    { "label": "TEST-STATE",  "actions": ["TEST-ACTION"] }
+    { "label": "Y",     "actions": ["1to0"] }
   ],
   "lenses": [
     {
-      "label": "state-machine",
+      "label": "state-machine-comult",
       "rules": [
         { "from": ["AtoA", "AtoA"], "to": ["AtoA"] },
         { "from": ["AtoA", "AtoB"], "to": ["AtoB"] },
@@ -22,8 +20,12 @@
         { "from": ["BtoA", "AtoA"], "to": ["BtoA"] },
         { "from": ["BtoA", "AtoB"], "to": ["BtoB"] },
         { "from": ["BtoB", "BtoA"], "to": ["BtoA"] },
-        { "from": ["BtoB", "BtoB"], "to": ["BtoB"] },
-    
+        { "from": ["BtoB", "BtoB"], "to": ["BtoB"] }
+      ]
+    },
+    {
+      "label": "state-machine-counit",
+      "rules": [
         { "from": ["IDENTITY"], "to": ["AtoA"] },
         { "from": ["IDENTITY"], "to": ["BtoB"] }
       ]
@@ -35,12 +37,15 @@
         { "from": ["0to1"], "to": ["AtoB"] },
         { "from": ["1to0"], "to": ["BtoA"] }
       ]
+    }
+  ],
+  "diagram": [
+    {
+      "lens": "state-machine-comult"
     },
     {
-      "label": "test",
-      "rules": [
-        { "from": ["TEST-ACTION"], "to": ["BtoA", "AtoB"] }
-      ]
+      "op": "Any",
+      "lens": "word-generator"
     }
   ]
 }

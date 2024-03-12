@@ -1,5 +1,5 @@
 pub mod action;
-pub mod chain;
+pub mod domain;
 pub mod config;
 pub mod rule;
 pub mod util;
@@ -12,7 +12,7 @@ use std::hash::Hash;
 use self::config::{Config, LensConfig, RuleConfig, StateConfig};
 use self::util::{IndexedHandler, LabelMap, PartialResult, Transducer};
 use self::rule::{Rule, Lens};
-use self::chain::{ChainContext, ChainIndex};
+use self::domain::{Domain, ElemIndex};
 
 
 
@@ -34,12 +34,12 @@ pub struct Action {
 pub struct Engine {
   states: IndexedHandler<State>,
   actions: IndexedHandler<Action>,
-  targets: ChainContext<Action>,
-  sources: ChainContext<Action>,
+  targets: Domain<Action>,
+  sources: Domain<Action>,
 
   label_map: LabelMap,
   base_state_map: HashMap<Action, State>,
-  rule_map: HashMap<ChainIndex, HashSet<Rule<ChainIndex>>>,
+  rule_map: HashMap<ElemIndex, HashSet<Rule<ElemIndex>>>,
 }
 
 
@@ -62,10 +62,10 @@ impl Engine {
       engine.label_map.insert(label, Lens {});
       for RuleConfig { from, to } in rules {
         let rule = Rule {
-          from: engine.targets.new_chain(
+          from: engine.targets.new(
             from.into_iter().map(|label| engine.label_map.get(label).unwrap())
           ).unwrap(),
-          to: engine.sources.new_chain(
+          to: engine.sources.new(
             to.into_iter().rev().map(|label| engine.label_map.get(label).unwrap())
           ).unwrap()
         };
@@ -88,16 +88,17 @@ impl Engine {
     queue.unwrap().iter().map(|&action| self.label_map.reverse_lookup(action).unwrap()).collect::<Vec<_>>()
   }
 
-  fn iter_source<'a>(&'a self, target: ChainIndex) -> impl Iterator<Item = Action> + 'a {
+  fn iter_source<'a>(&'a self, target: ElemIndex) -> impl Iterator<Item = Action> + 'a {
     self.rule_map.get(&target)
       .and_then(|rules| rules.iter().next())
-      .map(|rule| self.sources.get_chain(rule.to))
+      .map(|rule| self.sources.get(rule.to))
       .unwrap()
   }
 
   pub fn transducer<'a>(&'a self) -> impl Fn(Vec<Action>) -> Result<Vec<Action>, Vec<Action>> + 'a {
-    PartialResult::transducer(
-      |queue| self.targets.recognize_chain(queue),
+    |queue| PartialResult::transduce(
+      queue,
+      |queue| self.targets.recognize(queue),
       |index, mut queue| {
         queue.extend(self.iter_source(index));
         queue

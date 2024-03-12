@@ -13,13 +13,8 @@ pub enum PartialResult<A, B> {
   Error(B)
 }
 
-pub trait Transducer<A, B> {
-  fn map<C>(self, f: impl FnOnce(A) -> C) -> PartialResult<C, B>;
-  fn transducer(eval: impl Fn(B) -> PartialResult<A, B>, update: impl Fn(A, B) -> B) -> impl Fn(B) -> Result<B, B>;
-}
-
-impl<A, B> Transducer<A, B> for PartialResult<A, B> {
-  fn map<C>(self, f: impl FnOnce(A) -> C) -> PartialResult<C, B> {
+impl<A, B> PartialResult<A, B> {
+  pub fn map<C>(self, f: impl FnOnce(A) -> C) -> PartialResult<C, B> {
     match self {
         PartialResult::Ok(a, b) => PartialResult::Ok(f(a), b),
         PartialResult::Partial(a, b) => PartialResult::Partial(f(a), b),
@@ -27,27 +22,27 @@ impl<A, B> Transducer<A, B> for PartialResult<A, B> {
     }
   }
 
-  fn transducer(
+  pub fn transduce(
+    mut data: B,
     eval: impl Fn(B) -> PartialResult<A, B>,
     update: impl Fn(A, B) -> B
-  ) -> impl Fn(B) -> Result<B, B> {
-    move |mut data| {
-      loop {
-        data = match eval(data) {
-          PartialResult::Partial(intermediate, data) => update(intermediate, data),
-          PartialResult::Ok(intermediate, data) => return Ok(update(intermediate, data)),
-          PartialResult::Error(data) => return Err(data),
-        }
+  ) -> Result<B, B> {
+    loop {
+      data = match eval(data) {
+        PartialResult::Partial(intermediate, data) => update(intermediate, data),
+        PartialResult::Ok(intermediate, data) => return Ok(update(intermediate, data)),
+        PartialResult::Error(data) => return Err(data),
       }
     }
   }
 }
 
-pub trait Middleware<A, B, C, D> {
-  
+pub trait Transducer<A, B> {
+  fn transducer<'a>(&'a self) -> impl Fn(A) -> Result<B, B> + 'a;
 }
 
 
+// TODO: Eventually move this to middleware for handling labels.
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Labeled {
   Action(Action),

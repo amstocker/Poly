@@ -56,6 +56,4 @@ fn main() {
         transduce(&engine, &actions);
     }
 
-    transduce(&engine, &["AtoB", "1to0"]);
-    transduce(&engine, &["AtoB", "TEST-ACTION"]);
 }
