@@ -7,10 +7,10 @@ use self::engine::config::Config;
 
 
 
-fn reduce(engine: &Engine, actions: &[&str]) {
+fn transduce(engine: &Engine, actions: &[&str]) {
     println!("{:?} -> {:?}",
         actions,
-        engine.reduce_labeled(actions.into_iter())
+        engine.transduce_labeled(actions.into_iter())
     );
 }
 
@@ -30,7 +30,7 @@ fn main() {
     ];
 
     for actions in chains.into_iter() {
-        reduce(&engine, &actions);
+        transduce(&engine, &actions);
     }
 
     let chains = [
@@ -53,9 +53,9 @@ fn main() {
     ];
 
     for actions in chains.into_iter() {
-        reduce(&engine, &actions);
+        transduce(&engine, &actions);
     }
 
-    reduce(&engine, &["AtoB", "1to0"]);
-    reduce(&engine, &["AtoB", "TEST-ACTION"]);
+    transduce(&engine, &["AtoB", "1to0"]);
+    transduce(&engine, &["AtoB", "TEST-ACTION"]);
 }

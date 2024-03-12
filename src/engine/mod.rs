@@ -10,7 +10,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use self::config::{Config, LensConfig, RuleConfig, StateConfig};
-use self::util::{LabelMap, IndexedHandler};
+use self::util::{IndexedHandler, LabelMap, PartialResult};
 use self::rule::{Rule, Lens};
 use self::chain::{ChainContext, ChainIndex};
 
@@ -80,11 +80,11 @@ impl Engine {
   }
 
   // TODO: This should really be handled by some kind of middleware.
-  pub fn reduce_labeled<'a, S: AsRef<str>>(
+  pub fn transduce_labeled<'a, S: AsRef<str>>(
     &self,
     labels: impl Iterator<Item = S> + Clone
   ) -> Vec<&String> {
-    let queue = self.reduce(labels.map(|label| self.label_map.get(label).unwrap()).collect());
+    let queue = self.transducer()(labels.map(|label| self.label_map.get(label).unwrap()).collect());
     queue.unwrap().iter().map(|&action| self.label_map.reverse_lookup(action).unwrap()).collect::<Vec<_>>()
   }
 
@@ -95,22 +95,12 @@ impl Engine {
       .unwrap()
   }
 
-  fn reduce(&self, mut queue: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
-    loop {
-      queue = match self.targets.recognize_chain(queue) {
-        chain::RecognizedIndex::All { index, mut queue } => {
-          queue.extend(self.iter_source(index));
-          return Ok(queue);
-        },
-        chain::RecognizedIndex::Partial { index, mut queue } => {
-          queue.extend(self.iter_source(index));
-          queue
-        },
-        chain::RecognizedIndex::Error { queue } => {
-          return Err(queue);
-        },
-      }
-    }
+  fn transducer<'a>(&'a self) -> impl Fn(Vec<Action>) -> Result<Vec<Action>, Vec<Action>> + 'a {
+    PartialResult::transducer(
+      |queue| self.targets.recognize_chain(queue),
+      |index, mut queue| { queue.extend(self.iter_source(index)); queue },
+      |index, mut queue| { queue.extend(self.iter_source(index)); queue }
+    )
   }
 
 }

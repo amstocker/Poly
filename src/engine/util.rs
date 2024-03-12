@@ -6,6 +6,48 @@ use crate::engine::rule::Lens;
 
 
 
+#[derive(Debug)]
+pub enum PartialResult<A, B> {
+  Ok(A, B),
+  Partial(A, B),
+  Error(B)
+}
+
+impl<A, B> PartialResult<A, B> {
+  pub fn map<C>(self, f: impl FnOnce(A) -> C) -> PartialResult<C, B> {
+    match self {
+        PartialResult::Ok(a, b) => PartialResult::Ok(f(a), b),
+        PartialResult::Partial(a, b) => PartialResult::Partial(f(a), b),
+        PartialResult::Error(b) => PartialResult::Error(b),
+    }
+  }
+
+  pub fn map_data<C>(self, f: impl FnOnce(B) -> C) -> PartialResult<A, C> {
+    match self {
+      PartialResult::Ok(a, b) => PartialResult::Ok(a, f(b)),
+      PartialResult::Partial(a, b) => PartialResult::Partial(a, f(b)),
+      PartialResult::Error(b) => PartialResult::Error(f(b)),
+    } 
+  }
+
+  pub fn transducer<C>(
+    eval: impl Fn(B) -> PartialResult<A, B>,
+    ok: impl Fn(A, B) -> C,
+    partial: impl Fn(A, B) -> B
+  ) -> impl Fn(B) -> Result<C, B> {
+    move |mut data| {
+      loop {
+        data = match eval(data) {
+          PartialResult::Partial(intermediate, data) => partial(intermediate, data),
+          PartialResult::Ok(intermediate, data) => return Ok(ok(intermediate, data)),
+          PartialResult::Error(data) => return Err(data),
+        }
+      }
+    }
+  }
+}
+
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Labeled {
   Action(Action),

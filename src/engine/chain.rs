@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use super::util::PartialResult;
+
 
 pub type ChainIndex = usize;
 
@@ -12,6 +14,7 @@ pub struct ChainElem<A> {
   next: Option<ChainIndex>,
   prev: HashSet<ChainIndex>
 }
+
 
 #[derive(Clone, Copy)]
 pub struct ChainIter<'a, A> {
@@ -29,45 +32,6 @@ impl<'a, A> Iterator for ChainIter<'a, A> where A: Copy {
       self.index = elem.next;
       elem.action
     })
-  }
-}
-
-
-#[derive(Debug)]
-pub enum Recognized<A> {
-  All {
-    queue: Vec<A>
-  },
-  Partial {
-    queue: Vec<A>
-  },
-  Error {
-    queue: Vec<A>
-  }
-}
-
-#[derive(Debug)]
-pub enum RecognizedIndex<A> {
-  All {
-    index: ChainIndex,
-    queue: Vec<A>
-  },
-  Partial {
-    index: ChainIndex,
-    queue: Vec<A>
-  },
-  Error {
-    queue: Vec<A>
-  }
-}
-
-impl<A> Recognized<A> {
-  pub fn with_index(self, index: ChainIndex) -> RecognizedIndex<A> {
-    match self {
-        Recognized::All { queue } => RecognizedIndex::All { index, queue },
-        Recognized::Partial { queue } => RecognizedIndex::Partial { index, queue },
-        Recognized::Error { queue } => RecognizedIndex::Error { queue }
-    }
   }
 }
 
@@ -129,30 +93,30 @@ where
       .or(next)
   }
 
-  pub fn recognize_chain(&self, mut queue: Vec<A>) -> RecognizedIndex<A> {
+  pub fn recognize_chain(&self, mut queue: Vec<A>) -> PartialResult<ChainIndex, Vec<A>> {
     if let Some(action) = queue.pop() {
-      let elems = self.maximal_elems.get(&action)
-        .unwrap()
-        .iter()
-        .map(|&index| self.elems.get(index).unwrap());
-      for elem in elems {
+      for elem in match self.maximal_elems.get(&action) {
+        Some(elems) =>
+          elems.iter().map(|&index| self.elems.get(index).unwrap()),
+        None =>
+          return PartialResult::Error(queue)
+      } {
         queue = match self.recognize_chain_at_index(queue, elem.next) {
-          Recognized::Error { queue } => queue,
-          result => {
-            return result.with_index(elem.index);
-          }
+          PartialResult::Error(queue) => queue,
+          result =>
+            return result.map(|_| elem.index)
         }
       }
       queue.push(action);
     }
-    RecognizedIndex::Error { queue }
+    PartialResult::Error(queue)
   }
 
   pub fn recognize_chain_at_index(
     &self,
     mut queue: Vec<A>,
     index: Option<ChainIndex>
-  ) -> Recognized<A> {
+  ) -> PartialResult<(), Vec<A>> {
     match (
       queue.pop(),
       index.and_then(|index| self.elems.get(index))
@@ -160,25 +124,25 @@ where
       (Some(action), Some(elem)) =>
         if elem.action == action {
           match self.recognize_chain_at_index(queue, elem.next) {
-            Recognized::Error { mut queue } => {
+            PartialResult::Error(mut queue) => {
               queue.push(action);
-              Recognized::Error { queue }
+              PartialResult::Error(queue)
             },
             result => result
           }
         } else {
           queue.push(action);
-          Recognized::Error { queue }
+          PartialResult::Error(queue)
       },
       (Some(action), None) => {
         queue.push(action);
-        Recognized::Partial { queue }
+        PartialResult::Partial((), queue)
       },
       (None, None) => {
-        Recognized::All { queue }
+        PartialResult::Ok((), queue)
       },
       (None, Some(_)) => {
-        Recognized::Error { queue }
+        PartialResult::Error(queue)
       }
     }
   }
