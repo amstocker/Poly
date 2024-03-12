@@ -7,11 +7,12 @@ pub mod util;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::hash::Hash;
 
 use self::config::{Config, LensConfig, RuleConfig, StateConfig};
-use self::util::{LabelMap, Labeled, IndexedHandler};
+use self::util::{LabelMap, IndexedHandler};
 use self::rule::{Rule, Lens};
-use self::chain::{ChainContext, ChainIndex, Recognized};
+use self::chain::{ChainContext, ChainIndex};
 
 
 
@@ -45,43 +46,36 @@ pub struct Engine {
 impl Engine {
   pub fn from_config(config: Config) -> Self {
     let mut engine = Engine::default();
-    
-    let mut label_map = LabelMap::default();
-    let mut rule_map = HashMap::new();
-    let mut base_state_map = HashMap::new();
 
     for StateConfig { label, actions } in config.states {
       let state = engine.states.new();
-      label_map.insert(label, state);
+      engine.label_map.insert(label, state);
 
       for label in actions {
         let action = engine.actions.new();
-        label_map.insert(label, action);
-        base_state_map.insert(action, state);
+        engine.label_map.insert(label, action);
+        engine.base_state_map.insert(action, state);
       }
     }
 
     for LensConfig { label, rules, .. } in config.lenses {
-      label_map.insert(label, Lens {});
+      engine.label_map.insert(label, Lens {});
       for RuleConfig { from, to } in rules {
         let rule = Rule {
           from: engine.targets.new_chain(
-            from.into_iter().map(|label| label_map.get(label).unwrap())
+            from.into_iter().map(|label| engine.label_map.get(label).unwrap())
           ).unwrap(),
           to: engine.sources.new_chain(
-            to.into_iter().map(|label| label_map.get(label).unwrap())
+            to.into_iter().rev().map(|label| engine.label_map.get(label).unwrap())
           ).unwrap()
         };
-        rule_map
+        engine.rule_map
           .entry(rule.from)
           .or_insert(HashSet::new())
           .insert(rule);
       }
     }
 
-    engine.label_map = label_map;
-    engine.base_state_map = base_state_map;
-    engine.rule_map = rule_map;
     engine
   }
 
@@ -94,7 +88,7 @@ impl Engine {
     queue.unwrap().iter().map(|&action| self.label_map.reverse_lookup(action).unwrap()).collect::<Vec<_>>()
   }
 
-  // TODO: Ensure that 
+  // TODO: Ensure that sources iterate in the correct direction...
   fn iter_source<'a>(&'a self, target: ChainIndex) -> impl Iterator<Item = Action> + 'a {
     self.rule_map.get(&target)
 

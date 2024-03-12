@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 
 pub type ChainIndex = usize;
@@ -25,7 +24,7 @@ impl<'a, A> Iterator for ChainIter<'a, A> where A: Copy {
   
   fn next(&mut self) -> Option<A> {
     self.index.and_then(|index|
-      self.context.data.get(index)
+      self.context.elems.get(index)
     ).map(|elem| {
       self.index = elem.prev;
       elem.action
@@ -72,48 +71,11 @@ impl<A> Recognized<A> {
   }
 }
 
-impl<A> From<RecognizedIndex<A>> for Option<ChainIndex> {
-  fn from(value: RecognizedIndex<A>) -> Self {
-    match value {
-      RecognizedIndex::All { index, .. } => Some(index),
-      RecognizedIndex::Partial { index, .. } => Some(index),
-      RecognizedIndex::Error { .. } => None
-    }
-  }
-}
 
-
-#[derive(Debug)]
-pub enum ChainDirection {
-  Forward,
-  Backward
-}
-
-
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct ChainContext<A> {
-  id: usize,
-  data: Vec<ChainElem<A>>,
-  direction: ChainDirection,
-  ends: HashMap<A, HashSet<ChainIndex>>
-}
-
-impl<A> PartialEq for ChainContext<A> {
-    fn eq(&self, other: &Self) -> bool { self.id == other.id }
-}
-
-impl<A> Default for ChainContext<A> {
-    fn default() -> Self {
-      Self {
-        id: (|| {
-          static COUNTER: AtomicUsize = AtomicUsize::new(1);
-          COUNTER.fetch_add(1, Ordering::Relaxed)
-        })(),
-        data: Vec::new(),
-        direction: ChainDirection::Forward,
-        ends: HashMap::new()
-      }
-    }
+  elems: Vec<ChainElem<A>>,
+  maximal_elems: HashMap<A, HashSet<ChainIndex>>
 }
 
 impl<A> ChainContext<A>
@@ -126,8 +88,8 @@ where
   
   pub fn new_chain(&mut self, actions: impl Iterator<Item = A>) -> Option<ChainIndex> {
     let index = self.new_chain_with_prev(actions, None)?;
-    let elem = self.data.get_mut(index)?;
-    self.ends
+    let elem = self.elems.get_mut(index)?;
+    self.maximal_elems
       .entry(elem.action)
       .or_insert(HashSet::new())
       .insert(elem.index);
@@ -141,14 +103,14 @@ where
   ) -> Option<ChainIndex> {
     actions.next()
       .and_then(|action| {
-        let index = if let Some(elem) = self.data.iter().find(|&elem|
+        let index = if let Some(elem) = self.elems.iter().find(|&elem|
           elem.action == action
           && elem.prev == prev
         ) {
           elem.index
         } else {
-          let index = self.data.len();
-          self.data.push(ChainElem {
+          let index = self.elems.len();
+          self.elems.push(ChainElem {
             index,
             action,
             prev,
@@ -158,7 +120,7 @@ where
         };
 
         prev.and_then(|prev_index|
-          self.data.get_mut(prev_index)
+          self.elems.get_mut(prev_index)
             .map(|elem| elem.next.insert(index))
         );
 
@@ -169,11 +131,11 @@ where
 
   pub fn recognize_chain(&self, mut queue: Vec<A>) -> RecognizedIndex<A> {
     if let Some(action) = queue.pop() {
-      let ends = self.ends.get(&action)
+      let elems = self.maximal_elems.get(&action)
         .unwrap()
         .iter()
-        .map(|&index| self.data.get(index).unwrap());
-      for elem in ends {
+        .map(|&index| self.elems.get(index).unwrap());
+      for elem in elems {
         queue = match self.recognize_chain_at_index(queue, elem.prev) {
           Recognized::Error { queue } => queue,
           result => {
@@ -186,10 +148,14 @@ where
     RecognizedIndex::Error { queue }
   }
 
-  pub fn recognize_chain_at_index(&self, mut queue: Vec<A>, index: Option<ChainIndex>) -> Recognized<A> {
+  pub fn recognize_chain_at_index(
+    &self,
+    mut queue: Vec<A>,
+    index: Option<ChainIndex>
+  ) -> Recognized<A> {
     match (
       queue.pop(),
-      index.and_then(|index| self.data.get(index))
+      index.and_then(|index| self.elems.get(index))
     ) {
       (Some(action), Some(elem)) =>
         if elem.action == action {

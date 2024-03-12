@@ -6,7 +6,9 @@
     { "label": "B",     "actions": ["BtoA", "BtoB"] },
 
     { "label": "X",     "actions": ["0to0", "0to1"] },
-    { "label": "Y",     "actions": ["1to0"] }
+    { "label": "Y",     "actions": ["1to0"] },
+
+    { "label": "TEST-STATE",  "actions": ["TEST-ACTION"] }
   ],
   "lenses": [
     {
@@ -32,6 +34,12 @@
         { "from": ["0to0"], "to": ["AtoA"] },
         { "from": ["0to1"], "to": ["AtoB"] },
         { "from": ["1to0"], "to": ["BtoA"] }
+      ]
+    },
+    {
+      "label": "test",
+      "rules": [
+        { "from": ["TEST-ACTION"], "to": ["BtoA", "AtoB"] }
       ]
     }
   ]

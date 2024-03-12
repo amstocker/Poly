@@ -56,42 +56,6 @@ fn main() {
         reduce(&engine, &actions);
     }
 
-    let chains = [
-        ["AtoA", "AtoA", "AtoA", "AtoA"],
-        ["AtoA", "AtoA", "AtoA", "AtoB"],
-        ["AtoA", "AtoA", "AtoB", "BtoA"],
-        ["AtoA", "AtoA", "AtoB", "BtoB"],
-        ["AtoA", "AtoB", "BtoA", "AtoA"],
-        ["AtoA", "AtoB", "BtoA", "AtoB"],
-        ["AtoA", "AtoB", "BtoB", "BtoA"],
-        ["AtoA", "AtoB", "BtoB", "BtoB"],
-        ["AtoB", "BtoA", "AtoA", "AtoA"],
-        ["AtoB", "BtoA", "AtoA", "AtoB"],
-        ["AtoB", "BtoA", "AtoB", "BtoA"],
-        ["AtoB", "BtoA", "AtoB", "BtoB"],
-        ["AtoB", "BtoB", "BtoA", "AtoA"],
-        ["AtoB", "BtoB", "BtoA", "AtoB"],
-        ["AtoB", "BtoB", "BtoB", "BtoA"],
-        ["AtoB", "BtoB", "BtoB", "BtoB"],
-        ["BtoA", "AtoA", "AtoA", "AtoA"],
-        ["BtoA", "AtoA", "AtoA", "AtoB"],
-        ["BtoA", "AtoA", "AtoB", "BtoA"],
-        ["BtoA", "AtoA", "AtoB", "BtoB"],
-        ["BtoA", "AtoB", "BtoA", "AtoA"],
-        ["BtoA", "AtoB", "BtoA", "AtoB"],
-        ["BtoA", "AtoB", "BtoB", "BtoA"],
-        ["BtoA", "AtoB", "BtoB", "BtoB"],
-        ["BtoB", "BtoA", "AtoA", "AtoA"],
-        ["BtoB", "BtoA", "AtoA", "AtoB"],
-        ["BtoB", "BtoA", "AtoB", "BtoA"],
-        ["BtoB", "BtoA", "AtoB", "BtoB"],
-        ["BtoB", "BtoB", "BtoA", "AtoA"],
-        ["BtoB", "BtoB", "BtoA", "AtoB"],
-        ["BtoB", "BtoB", "BtoB", "BtoA"],
-        ["BtoB", "BtoB", "BtoB", "BtoB"]
-    ];
-
-    for actions in chains.into_iter() {
-        reduce(&engine, &actions);
-    }
+    reduce(&engine, &["AtoB", "1to0"]);
+    reduce(&engine, &["AtoB", "TEST-ACTION"]);
 }
