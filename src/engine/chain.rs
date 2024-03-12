@@ -9,8 +9,8 @@ pub type ChainIndex = usize;
 pub struct ChainElem<A> {
   index: ChainIndex,
   action: A,
-  prev: Option<ChainIndex>,
-  next: HashSet<ChainIndex>
+  next: Option<ChainIndex>,
+  prev: HashSet<ChainIndex>
 }
 
 #[derive(Clone, Copy)]
@@ -26,7 +26,7 @@ impl<'a, A> Iterator for ChainIter<'a, A> where A: Copy {
     self.index.and_then(|index|
       self.context.elems.get(index)
     ).map(|elem| {
-      self.index = elem.prev;
+      self.index = elem.next;
       elem.action
     })
   }
@@ -87,7 +87,7 @@ where
   }
   
   pub fn new_chain(&mut self, actions: impl Iterator<Item = A>) -> Option<ChainIndex> {
-    let index = self.new_chain_with_prev(actions, None)?;
+    let index = self.new_chain_with_next(actions, None)?;
     let elem = self.elems.get_mut(index)?;
     self.maximal_elems
       .entry(elem.action)
@@ -96,16 +96,16 @@ where
     Some(index)
   }
 
-  pub fn new_chain_with_prev(
+  pub fn new_chain_with_next(
     &mut self,
     mut actions: impl Iterator<Item = A>,
-    prev: Option<ChainIndex>
+    next: Option<ChainIndex>
   ) -> Option<ChainIndex> {
     actions.next()
       .and_then(|action| {
         let index = if let Some(elem) = self.elems.iter().find(|&elem|
           elem.action == action
-          && elem.prev == prev
+          && elem.next == next
         ) {
           elem.index
         } else {
@@ -113,20 +113,20 @@ where
           self.elems.push(ChainElem {
             index,
             action,
-            prev,
-            next: HashSet::new()
+            next,
+            prev: HashSet::new()
           });
           index
         };
 
-        prev.and_then(|prev_index|
-          self.elems.get_mut(prev_index)
-            .map(|elem| elem.next.insert(index))
+        next.and_then(|next_index|
+          self.elems.get_mut(next_index)
+            .map(|elem| elem.prev.insert(index))
         );
 
-        self.new_chain_with_prev(actions, Some(index))
+        self.new_chain_with_next(actions, Some(index))
       })
-      .or(prev)
+      .or(next)
   }
 
   pub fn recognize_chain(&self, mut queue: Vec<A>) -> RecognizedIndex<A> {
@@ -136,7 +136,7 @@ where
         .iter()
         .map(|&index| self.elems.get(index).unwrap());
       for elem in elems {
-        queue = match self.recognize_chain_at_index(queue, elem.prev) {
+        queue = match self.recognize_chain_at_index(queue, elem.next) {
           Recognized::Error { queue } => queue,
           result => {
             return result.with_index(elem.index);
@@ -159,7 +159,7 @@ where
     ) {
       (Some(action), Some(elem)) =>
         if elem.action == action {
-          match self.recognize_chain_at_index(queue, elem.prev) {
+          match self.recognize_chain_at_index(queue, elem.next) {
             Recognized::Error { mut queue } => {
               queue.push(action);
               Recognized::Error { queue }
