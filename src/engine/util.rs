@@ -13,8 +13,13 @@ pub enum PartialResult<A, B> {
   Error(B)
 }
 
-impl<A, B> PartialResult<A, B> {
-  pub fn map<C>(self, f: impl FnOnce(A) -> C) -> PartialResult<C, B> {
+pub trait Transducer<A, B> {
+  fn map<C>(self, f: impl FnOnce(A) -> C) -> PartialResult<C, B>;
+  fn transducer(eval: impl Fn(B) -> PartialResult<A, B>, update: impl Fn(A, B) -> B) -> impl Fn(B) -> Result<B, B>;
+}
+
+impl<A, B> Transducer<A, B> for PartialResult<A, B> {
+  fn map<C>(self, f: impl FnOnce(A) -> C) -> PartialResult<C, B> {
     match self {
         PartialResult::Ok(a, b) => PartialResult::Ok(f(a), b),
         PartialResult::Partial(a, b) => PartialResult::Partial(f(a), b),
@@ -22,29 +27,24 @@ impl<A, B> PartialResult<A, B> {
     }
   }
 
-  pub fn map_data<C>(self, f: impl FnOnce(B) -> C) -> PartialResult<A, C> {
-    match self {
-      PartialResult::Ok(a, b) => PartialResult::Ok(a, f(b)),
-      PartialResult::Partial(a, b) => PartialResult::Partial(a, f(b)),
-      PartialResult::Error(b) => PartialResult::Error(f(b)),
-    } 
-  }
-
-  pub fn transducer<C>(
+  fn transducer(
     eval: impl Fn(B) -> PartialResult<A, B>,
-    ok: impl Fn(A, B) -> C,
-    partial: impl Fn(A, B) -> B
-  ) -> impl Fn(B) -> Result<C, B> {
+    update: impl Fn(A, B) -> B
+  ) -> impl Fn(B) -> Result<B, B> {
     move |mut data| {
       loop {
         data = match eval(data) {
-          PartialResult::Partial(intermediate, data) => partial(intermediate, data),
-          PartialResult::Ok(intermediate, data) => return Ok(ok(intermediate, data)),
+          PartialResult::Partial(intermediate, data) => update(intermediate, data),
+          PartialResult::Ok(intermediate, data) => return Ok(update(intermediate, data)),
           PartialResult::Error(data) => return Err(data),
         }
       }
     }
   }
+}
+
+pub trait Middleware<A, B, C, D> {
+  
 }
 
 

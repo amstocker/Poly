@@ -10,7 +10,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use self::config::{Config, LensConfig, RuleConfig, StateConfig};
-use self::util::{IndexedHandler, LabelMap, PartialResult};
+use self::util::{IndexedHandler, LabelMap, PartialResult, Transducer};
 use self::rule::{Rule, Lens};
 use self::chain::{ChainContext, ChainIndex};
 
@@ -95,13 +95,13 @@ impl Engine {
       .unwrap()
   }
 
-  fn transducer<'a>(&'a self) -> impl Fn(Vec<Action>) -> Result<Vec<Action>, Vec<Action>> + 'a {
-    let recognizer = |queue| self.targets.recognize_chain(queue);
-    let extender = |index, mut queue: Vec<Action>| {
-      queue.extend(self.iter_source(index));
-      queue
-    };
-    PartialResult::transducer(recognizer, extender, extender)
+  pub fn transducer<'a>(&'a self) -> impl Fn(Vec<Action>) -> Result<Vec<Action>, Vec<Action>> + 'a {
+    PartialResult::transducer(
+      |queue| self.targets.recognize_chain(queue),
+      |index, mut queue| {
+        queue.extend(self.iter_source(index));
+        queue
+      }
+    )
   }
-
 }
