@@ -38,7 +38,7 @@ pub struct Engine {
 
   label_map: LabelMap,
   base_state_map: HashMap<Action, State>,
-  rule_source_map: HashMap<ChainIndex, HashSet<Rule<ChainIndex>>>,
+  rule_map: HashMap<ChainIndex, HashSet<Rule<ChainIndex>>>,
 }
 
 
@@ -51,11 +51,11 @@ impl Engine {
     let mut base_state_map = HashMap::new();
 
     for StateConfig { label, actions } in config.states {
-      let state = engine.new_state();
+      let state = engine.states.new();
       label_map.insert(label, state);
 
       for label in actions {
-        let action = engine.new_action();
+        let action = engine.actions.new();
         label_map.insert(label, action);
         base_state_map.insert(action, state);
       }
@@ -81,54 +81,40 @@ impl Engine {
 
     engine.label_map = label_map;
     engine.base_state_map = base_state_map;
-    engine.rule_source_map = rule_map;
+    engine.rule_map = rule_map;
     engine
   }
 
-  pub fn lookup_label<T: Into<Labeled> + Copy>(&self, labeled: T) -> Option<&String> {
-    self.label_map.reverse_lookup(labeled)
-  }
-
-  pub fn lookup_actions<'a, S: AsRef<str>>(
-    &'a self,
-    labels: impl Iterator<Item = S> + Clone + 'a
-  ) -> impl Iterator<Item = Action> + Clone + 'a {
-    labels.map(|label| self.label_map.get(label).unwrap())
-  }
-
-  fn new_state(&mut self) -> State {
-    self.states.new()
-  }
-
-  fn new_action(&mut self) -> Action {
-    self.actions.new()
-  }
-
+  // TODO: This should really be handled by some kind of middleware.
   pub fn reduce_labeled<'a, S: AsRef<str>>(
     &self,
     labels: impl Iterator<Item = S> + Clone
   ) -> Vec<&String> {
-    let queue = self.reduce(self.lookup_actions(labels).collect());
-    queue.unwrap().iter().map(|&action| self.lookup_label(action).unwrap()).collect::<Vec<_>>()
+    let queue = self.reduce(labels.map(|label| self.label_map.get(label).unwrap()).collect());
+    queue.unwrap().iter().map(|&action| self.label_map.reverse_lookup(action).unwrap()).collect::<Vec<_>>()
+  }
+
+  // TODO: Ensure that 
+  fn iter_source<'a>(&'a self, target: ChainIndex) -> impl Iterator<Item = Action> + 'a {
+    self.rule_map.get(&target)
+
+      // Pick the first rule that has `from` equal to the target.
+      .and_then(|rules| rules.iter().next())
+
+      // Use that to iterate over the actions at the source.
+      .map(|rule| self.sources.get_chain(rule.to))
+      .unwrap()
   }
 
   fn reduce(&self, mut queue: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
     loop {
       queue = match self.targets.recognize_chain(queue) {
         chain::RecognizedIndex::All { index, mut queue } => {
-          let actions = self.rule_source_map.get(&index)
-            .and_then(|rules| rules.iter().next())
-            .map(|rule| self.sources.get_action_chain(rule.to).collect::<Vec<_>>())
-            .unwrap();
-          queue.extend(actions);
+          queue.extend(self.iter_source(index));
           return Ok(queue);
         },
         chain::RecognizedIndex::Partial { index, mut queue } => {
-          let actions = self.rule_source_map.get(&index)
-            .and_then(|rules| rules.iter().next())
-            .map(|rule| self.sources.get_action_chain(rule.to).collect::<Vec<_>>())
-            .unwrap();
-          queue.extend(actions);
+          queue.extend(self.iter_source(index));
           queue
         },
         chain::RecognizedIndex::Error { queue } => {

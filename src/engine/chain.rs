@@ -11,8 +11,7 @@ pub struct ChainElem<A> {
   index: ChainIndex,
   action: A,
   prev: Option<ChainIndex>,
-  next: HashSet<ChainIndex>,
-  is_end: bool
+  next: HashSet<ChainIndex>
 }
 
 #[derive(Clone, Copy)]
@@ -121,10 +120,17 @@ impl<A> ChainContext<A>
 where
   A: Eq + Copy + Hash + Debug
 {
+  pub fn get_chain(&self, index: ChainIndex) -> ChainIter<A> {
+    ChainIter { context: &self, index: Some(index) }
+  }
+  
   pub fn new_chain(&mut self, actions: impl Iterator<Item = A>) -> Option<ChainIndex> {
     let index = self.new_chain_with_prev(actions, None)?;
     let elem = self.data.get_mut(index)?;
-    elem.is_end = true;
+    self.ends
+      .entry(elem.action)
+      .or_insert(HashSet::new())
+      .insert(elem.index);
     Some(index)
   }
 
@@ -146,8 +152,7 @@ where
             index,
             action,
             prev,
-            next: HashSet::new(),
-            is_end: false
+            next: HashSet::new()
           });
           index
         };
@@ -162,18 +167,21 @@ where
       .or(prev)
   }
 
-  fn iter_ends(&self) -> impl Iterator<Item = &ChainElem<A>> {
-    self.data.iter().filter(|elem| elem.is_end)
-  }
-
   pub fn recognize_chain(&self, mut queue: Vec<A>) -> RecognizedIndex<A> {
-    for elem in self.iter_ends() {
-      queue = match self.recognize_chain_at_index(queue, Some(elem.index)) {
-        Recognized::Error { queue } => queue,
-        result => {
-          return result.with_index(elem.index);
+    if let Some(action) = queue.pop() {
+      let ends = self.ends.get(&action)
+        .unwrap()
+        .iter()
+        .map(|&index| self.data.get(index).unwrap());
+      for elem in ends {
+        queue = match self.recognize_chain_at_index(queue, elem.prev) {
+          Recognized::Error { queue } => queue,
+          result => {
+            return result.with_index(elem.index);
+          }
         }
       }
+      queue.push(action);
     }
     RecognizedIndex::Error { queue }
   }
@@ -207,14 +215,6 @@ where
         Recognized::Error { queue }
       }
     }
-  }
-
-  pub fn get_action(&self, index: ChainIndex) -> Option<A> {
-    self.data.get(index).map(|elem| elem.action)
-  }
-
-  pub fn get_action_chain(&self, index: ChainIndex) -> ChainIter<A> {
-    ChainIter { context: &self, index: Some(index) }
   }
 }
 
