@@ -9,7 +9,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use self::config::{Config, LensConfig, RuleConfig, StateConfig};
-use self::util::{IndexedHandler, LabelMap, PartialResult, Transducer};
+use self::util::{IndexedHandler, LabelMap, PartialResult};
 use self::rule::{Rule, Lens};
 use self::domain::{Domain, ElemIndex};
 
@@ -83,7 +83,7 @@ impl Engine {
     &self,
     labels: impl Iterator<Item = S> + Clone
   ) -> Vec<&String> {
-    let queue = self.transducer()(labels.map(|label| self.label_map.get(label).unwrap()).collect());
+    let queue = self.transduce(labels.map(|label| self.label_map.get(label).unwrap()).collect());
     queue.unwrap().iter().map(|&action| self.label_map.reverse_lookup(action).unwrap()).collect::<Vec<_>>()
   }
 
@@ -94,14 +94,20 @@ impl Engine {
       .unwrap()
   }
 
-  pub fn transducer<'a>(&'a self) -> impl Fn(Vec<Action>) -> Result<Vec<Action>, Vec<Action>> + 'a {
-    |queue| PartialResult::transduce(
-      queue,
-      |queue| self.targets.recognize(queue),
-      |index, mut queue| {
-        queue.extend(self.iter_source(index));
-        queue
+  pub fn transduce(&self, mut queue: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
+    loop {
+      queue = match self.targets.recognize(queue) {
+        PartialResult::Partial(index, mut queue) => {
+          queue.extend(self.iter_source(index));
+          queue
+        },
+        PartialResult::Ok(index, mut queue) => {
+          queue.extend(self.iter_source(index));
+          return Ok(queue)
+        },
+        PartialResult::Error(queue) =>
+          return Err(queue)
       }
-    )
+    }
   }
 }

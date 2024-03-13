@@ -22,7 +22,7 @@ pub struct Iter<'a, T> {
   index: Option<ElemIndex>
 }
 
-impl<'a, T> Iterator for Iter<'a, T> where T: Copy {
+impl<T> Iterator for Iter<'_, T> where T: Copy {
   type Item = T;
   
   fn next(&mut self) -> Option<T> {
@@ -44,7 +44,7 @@ pub struct Domain<T> {
 
 impl<T> Domain<T>
 where
-  T: Eq + Copy + Hash
+  T: Eq + Copy + Hash + Debug
 {
   pub fn get(&self, index: ElemIndex) -> Iter<T> {
     Iter { domain: &self, index: Some(index) }

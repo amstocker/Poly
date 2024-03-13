@@ -21,24 +21,6 @@ impl<A, B> PartialResult<A, B> {
         PartialResult::Error(b) => PartialResult::Error(b),
     }
   }
-
-  pub fn transduce(
-    mut data: B,
-    eval: impl Fn(B) -> PartialResult<A, B>,
-    update: impl Fn(A, B) -> B
-  ) -> Result<B, B> {
-    loop {
-      data = match eval(data) {
-        PartialResult::Partial(intermediate, data) => update(intermediate, data),
-        PartialResult::Ok(intermediate, data) => return Ok(update(intermediate, data)),
-        PartialResult::Error(data) => return Err(data),
-      }
-    }
-  }
-}
-
-pub trait Transducer<A, B> {
-  fn transducer<'a>(&'a self) -> impl Fn(A) -> Result<B, B> + 'a;
 }
 
 
