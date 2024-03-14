@@ -58,7 +58,7 @@ impl BaseEngine {
 
 
 impl Engine<'_, Vec<Action>, Vec<Action>> for BaseEngine {
-  fn transduce<'a>(&'a self, queue: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
+  fn transduce(&self, queue: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
     self.base_transduce(queue)
   }
 }

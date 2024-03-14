@@ -11,8 +11,7 @@ pub trait Engine<'a, In, Out> {
   fn transduce(&'a self, input: In) -> Result<Out, Out>;
 }
 
-
-pub trait Middleware<'a, In, Out: 'a> {
+pub trait Layer<'a, In, Out: 'a> {
   type InnerIn;
   type InnerOut;
   type InnerEngine: Engine<'a, Self::InnerIn, Self::InnerOut>;
@@ -22,7 +21,7 @@ pub trait Middleware<'a, In, Out: 'a> {
   fn untranslate(&'a self, output: Self::InnerOut) -> Out;
 }
 
-impl<'a, T, In: 'a, Out: 'a> Engine<'a, In, Out> for T where T: Middleware<'a, In, Out> {
+impl<'a, T, In: 'a, Out: 'a> Engine<'a, In, Out> for T where T: Layer<'a, In, Out> {
   fn transduce(&'a self, input: In) -> Result<Out, Out> {
     self.inner().transduce(self.translate(input))
       .map(|output| self.untranslate(output))

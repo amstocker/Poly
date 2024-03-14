@@ -4,12 +4,12 @@ mod engine;
 use serde_json;
 
 use engine::Engine;
-use engine::label::LabelMiddleware;
+use engine::label::LabelLayer;
 use engine::config::Config;
 
 
 
-fn transduce(engine: &LabelMiddleware, actions: &[&str]) {
+fn transduce(engine: &LabelLayer, actions: &[&str]) {
     println!("{:?} -> {:?}",
         actions,
         engine.transduce(actions)
@@ -18,7 +18,7 @@ fn transduce(engine: &LabelMiddleware, actions: &[&str]) {
 
 fn main() {
     let config = serde_json::from_str::<Config>(include_str!("../test_config.json")).unwrap();
-    let engine = LabelMiddleware::from_config(config);
+    let engine = LabelLayer::from_config(config);
 
     let chains = [
         ["AtoA", "AtoA"],

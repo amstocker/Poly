@@ -3,7 +3,7 @@ use std::collections::{hash_map, HashMap, HashSet};
 use super::base::{Action, BaseEngine, State};
 use super::config::{Config, LensConfig, RuleConfig, StateConfig};
 use super::rule::{Rule, Lens};
-use super::Middleware;
+use super::Layer;
 
 
 
@@ -126,7 +126,7 @@ impl<T> IndexedHandler<T> where T: Indexed + Copy {
 }
 
 
-pub struct LabelMiddleware {
+pub struct LabelLayer {
   states: IndexedHandler<State>,
   actions: IndexedHandler<Action>,
   label_map: LabelMap,
@@ -134,7 +134,7 @@ pub struct LabelMiddleware {
   engine: BaseEngine 
 }
 
-impl LabelMiddleware {
+impl LabelLayer {
   pub fn from_config(config: Config) -> Self {
     let mut engine = BaseEngine::default();
 
@@ -181,7 +181,7 @@ impl LabelMiddleware {
 }
 
 
-impl<'a> Middleware<'a, &[&str], Vec<&'a String>> for LabelMiddleware {
+impl<'a> Layer<'a, &[&str], Vec<&'a String>> for LabelLayer {
   type InnerIn = Vec<Action>;
   type InnerOut = Vec<Action>;
   type InnerEngine = BaseEngine;
