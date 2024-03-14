@@ -3,12 +3,13 @@ mod engine;
 
 use serde_json;
 
-use engine::{Engine, LabelMiddleware};
+use engine::Engine;
+use engine::label::LabelMiddleware;
 use engine::config::Config;
 
 
 
-fn transduce<'a>(engine: &LabelMiddleware, actions: &'a [&str]) {
+fn transduce(engine: &LabelMiddleware, actions: &[&str]) {
     println!("{:?} -> {:?}",
         actions,
         engine.transduce(actions)
