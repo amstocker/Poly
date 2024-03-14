@@ -30,63 +30,15 @@ pub struct Action {
 
 
 #[derive(Default)]
-pub struct Engine {
-  states: IndexedHandler<State>,
-  actions: IndexedHandler<Action>,
+pub struct BaseEngine {
   targets: Domain<Action>,
   sources: Domain<Action>,
 
-  label_map: LabelMap,
   base_state_map: HashMap<Action, State>,
   rule_map: HashMap<ElemIndex, HashSet<Rule<ElemIndex>>>,
 }
 
-
-impl Engine {
-  pub fn from_config(config: Config) -> Self {
-    let mut engine = Engine::default();
-
-    for StateConfig { label, actions } in config.states {
-      let state = engine.states.new();
-      engine.label_map.insert(label, state);
-
-      for label in actions {
-        let action = engine.actions.new();
-        engine.label_map.insert(label, action);
-        engine.base_state_map.insert(action, state);
-      }
-    }
-
-    for LensConfig { label, rules, .. } in config.lenses {
-      engine.label_map.insert(label, Lens {});
-      for RuleConfig { from, to } in rules {
-        let rule = Rule {
-          from: engine.targets.new(
-            from.into_iter().map(|label| engine.label_map.get(label).unwrap())
-          ).unwrap(),
-          to: engine.sources.new(
-            to.into_iter().rev().map(|label| engine.label_map.get(label).unwrap())
-          ).unwrap()
-        };
-        engine.rule_map
-          .entry(rule.from)
-          .or_insert(HashSet::new())
-          .insert(rule);
-      }
-    }
-
-    engine
-  }
-
-  // TODO: This should really be handled by some kind of middleware.
-  pub fn transduce_labeled<'a, S: AsRef<str>>(
-    &self,
-    labels: impl Iterator<Item = S> + Clone
-  ) -> Vec<&String> {
-    let queue = self.transduce(labels.map(|label| self.label_map.get(label).unwrap()).collect());
-    queue.unwrap().iter().map(|&action| self.label_map.reverse_lookup(action).unwrap()).collect::<Vec<_>>()
-  }
-
+impl BaseEngine {
   fn iter_source<'a>(&'a self, target: ElemIndex) -> impl Iterator<Item = Action> + 'a {
     self.rule_map.get(&target)
       .and_then(|rules| rules.iter().next())
@@ -94,7 +46,7 @@ impl Engine {
       .unwrap()
   }
 
-  pub fn transduce(&self, mut queue: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
+  fn transduce(&self, mut queue: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
     loop {
       queue = match self.targets.recognize(queue) {
         PartialResult::Partial(index, mut queue) => {
@@ -108,6 +60,83 @@ impl Engine {
         PartialResult::Error(queue) =>
           return Err(queue)
       }
+    }
+  }
+}
+
+
+
+pub struct LabelMiddleware {
+  states: IndexedHandler<State>,
+  actions: IndexedHandler<Action>,
+  label_map: LabelMap,
+
+  engine: BaseEngine 
+}
+
+impl LabelMiddleware {
+  pub fn from_config(config: Config) -> Self {
+    let mut engine = BaseEngine::default();
+
+    let mut states = IndexedHandler::default();
+    let mut actions = IndexedHandler::default();
+    let mut label_map = LabelMap::default();
+
+    for StateConfig { label, actions: action_labels } in config.states {
+      let state = states.new();
+      label_map.insert(label, state);
+
+      for label in action_labels {
+        let action = actions.new();
+        label_map.insert(label, action);
+        engine.base_state_map.insert(action, state);
+      }
+    }
+
+    for LensConfig { label, rules, .. } in config.lenses {
+      label_map.insert(label, Lens {});
+      for RuleConfig { from, to } in rules {
+        let rule = Rule {
+          from: engine.targets.new(
+            from.into_iter().map(|label| label_map.get(label).unwrap())
+          ).unwrap(),
+          to: engine.sources.new(
+            to.into_iter().rev().map(|label| label_map.get(label).unwrap())
+          ).unwrap()
+        };
+        engine.rule_map
+          .entry(rule.from)
+          .or_insert(HashSet::new())
+          .insert(rule);
+      }
+    }
+
+    Self {
+      states,
+      actions,
+      label_map,
+      engine
+    }
+  }
+
+  fn translate<S: AsRef<str>>(&self, queue: Vec<S>) -> Vec<Action> {
+    queue.iter()
+      .map(|label| self.label_map.get(label).unwrap())
+      .collect()
+  }
+
+  fn untranslate<'a>(&'a self, queue: Vec<Action>) -> Vec<&'a String> {
+    queue.iter()
+      .map(|&action|
+        self.label_map.reverse_lookup(action).unwrap()
+      )
+      .collect()
+  }
+
+  pub fn transduce<'a, S: AsRef<str>>(&'a self, queue: Vec<S>) -> Result<Vec<&'a String>, Vec<&'a String>> {
+    match self.engine.transduce(self.translate(queue)) {
+        Ok(queue) => Ok(self.untranslate(queue)),
+        Err(queue) => Err(self.untranslate(queue)),
     }
   }
 }

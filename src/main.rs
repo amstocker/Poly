@@ -1,22 +1,23 @@
 mod engine;
 
+
 use serde_json;
 
-use self::engine::Engine;
-use self::engine::config::Config;
+use engine::LabelMiddleware;
+use engine::config::Config;
 
 
 
-fn transduce(engine: &Engine, actions: &[&str]) {
+fn transduce(engine: &LabelMiddleware, actions: &[&str]) {
     println!("{:?} -> {:?}",
         actions,
-        engine.transduce_labeled(actions.into_iter())
+        engine.transduce(actions.to_vec())
     );
 }
 
 fn main() {
     let config = serde_json::from_str::<Config>(include_str!("../test_config.json")).unwrap();
-    let engine = Engine::from_config(config);
+    let engine = LabelMiddleware::from_config(config);
 
     let chains = [
         ["AtoA", "AtoA"],
