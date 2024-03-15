@@ -1,5 +1,7 @@
 use std::collections::{hash_map, HashMap, HashSet};
 
+use crate::engine::config::InterfaceConfig;
+
 use super::base::{Action, BaseEngine, State};
 use super::config::{Config, LensConfig, RuleConfig, StateConfig};
 use super::rule::{Rule, Lens};
@@ -142,14 +144,19 @@ impl LabelLayer {
     let mut actions = IndexedHandler::default();
     let mut label_map = LabelMap::default();
 
-    for StateConfig { label, actions: action_labels } in config.states {
-      let state = states.new();
-      label_map.insert(label, state);
 
-      for label in action_labels {
-        let action = actions.new();
-        label_map.insert(label, action);
-        engine.base_state_map.insert(action, state);
+    println!("diagram: {:?}", config.diagram);
+
+    for InterfaceConfig { states: state_configs, .. } in config.interfaces {
+      for StateConfig { label, actions: action_labels } in state_configs {
+        let state = states.new();
+        label_map.insert(label, state);
+  
+        for label in action_labels {
+          let action = actions.new();
+          label_map.insert(label, action);
+          engine.base_state_map.insert(action, state);
+        }
       }
     }
 

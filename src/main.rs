@@ -12,7 +12,7 @@ use engine::config::Config;
 fn transduce(engine: &LabelLayer, actions: &[&str]) {
     println!("{:?} -> {:?}",
         actions,
-        engine.transduce(actions)
+        engine.transduce(actions).unwrap()
     );
 }
 
