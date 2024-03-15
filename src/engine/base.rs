@@ -39,6 +39,7 @@ impl BaseEngine {
   }
 
   fn base_transduce(&self, mut queue: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
+    // Match target of diagram to see if it's Exactly or Any, then loop if any and once if otherwise.
     loop {
       queue = match self.targets.recognize(queue) {
         PartialResult::Partial(index, mut queue) => {

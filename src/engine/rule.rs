@@ -5,6 +5,9 @@ pub struct Lens {
 
 }
 
+pub struct Diagram {
+}
+
 pub enum LensType {
   Category,
   Monad,

@@ -3,29 +3,36 @@
     {
       "label": "UNIT-INTERFACE",
       "states": [
-        { "label": "UNIT-STATE",  "actions": ["UNIT-ACTION"] }
+        { "label": "UNIT-STATE", "actions": ["UNIT-ACTION"] }
       ]
     },
     {
       "label": "STATE-MACHINE",
       "states": [
-        { "label": "A",     "actions": ["AtoA", "AtoB"] },
-        { "label": "B",     "actions": ["BtoA", "BtoB"] }
+        { "label": "A", "actions": ["AtoA", "AtoB"] },
+        { "label": "B", "actions": ["BtoA", "BtoB"] }
       ]
     },
     {
       "label": "WORDS",
       "states": [
-        { "label": "X",     "actions": ["0to0", "0to1"] },
-        { "label": "Y",     "actions": ["1to0"] }
+        { "label": "X", "actions": ["0to0", "0to1"] },
+        { "label": "Y", "actions": ["1to0"] }
       ]
     }
   ],
   "lenses": [
     {
       "label": "state-machine-comult",
-      "source": "STATE-MACHINE",
-      "target": "STATE-MACHINE",
+      "source": {
+        "once": { "label": "STATE-MACHINE" }
+      },
+      "target": {
+        "exactly" : {
+          "iterations": 2,
+          "label": "STATE-MACHINE"
+        }
+      },
       "rules": [
         { "from": ["AtoA", "AtoA"], "to": ["AtoA"] },
         { "from": ["AtoA", "AtoB"], "to": ["AtoB"] },
@@ -40,8 +47,12 @@
     },
     {
       "label": "state-machine-counit",
-      "source": "STATE-MACHINE",
-      "target": "UNIT-INTERFACE",
+      "source": {
+        "once": { "label": "STATE-MACHINE" }
+      },
+      "target": {
+        "once": { "label": "UNIT-INTERFACE" }
+      },
       "rules": [
         { "from": ["UNIT-ACTION"], "to": ["AtoA"] },
         { "from": ["UNIT-ACTION"], "to": ["BtoB"] }
@@ -49,8 +60,12 @@
     },
     {
       "label": "word-generator",
-      "source": "STATE-MACHINE",
-      "target": "WORDS",
+      "source": {
+        "once": { "label": "STATE-MACHINE" }
+      },
+      "target": {
+        "once": { "label": "WORDS" }
+      },
       "rules": [
         { "from": ["0to0"], "to": ["AtoA"] },
         { "from": ["0to1"], "to": ["AtoB"] },
@@ -58,22 +73,17 @@
       ]
     }
   ],
-  "_diagram": [
-    {
-      "lens": "state-machine-comult"
-    },
-    {
-      "op": "Any",
-      "lens": "word-generator"
-    }
-  ],
   "diagram": {
     "where": [],
     "source": {
-      "Exactly": "STATE-MACHINE"
+      "once": {
+        "label": "STATE-MACHINE"
+      }
     },
     "target": {
-      "Any": "WORDS"
+      "any": {
+        "label": "WORDS"
+      }
     }
   }
 }
