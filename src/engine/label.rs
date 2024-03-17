@@ -188,7 +188,7 @@ impl LabelLayer {
 }
 
 
-impl<'a> Layer<'a, &[&str], Vec<&'a String>> for LabelLayer {
+impl Layer<&[&str], Vec<String>> for LabelLayer {
   type InnerIn = Vec<Action>;
   type InnerOut = Vec<Action>;
   type InnerEngine = BaseEngine;
@@ -203,11 +203,12 @@ impl<'a> Layer<'a, &[&str], Vec<&'a String>> for LabelLayer {
       .collect()
   }
 
-  fn untranslate(&self, queue: Vec<Action>) -> Vec<&String> {
+  fn untranslate(&self, queue: Vec<Action>) -> Vec<String> {
     queue.iter()
       .map(|&action|
         self.label_map.reverse_lookup(action).unwrap()
       )
+      .cloned()
       .collect()
   }
 }

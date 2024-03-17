@@ -1,20 +1,20 @@
 {
   "interfaces": [
     {
-      "label": "UNIT-INTERFACE",
+      "label": "unit-interface",
       "states": [
-        { "label": "UNIT-STATE", "actions": ["UNIT-ACTION"] }
+        { "label": "unit-state", "actions": ["unit-action"] }
       ]
     },
     {
-      "label": "STATE-MACHINE",
+      "label": "state-machine",
       "states": [
         { "label": "A", "actions": ["AtoA", "AtoB"] },
         { "label": "B", "actions": ["BtoA", "BtoB"] }
       ]
     },
     {
-      "label": "WORDS",
+      "label": "words",
       "states": [
         { "label": "X", "actions": ["0to0", "0to1"] },
         { "label": "Y", "actions": ["1to0"] }
@@ -25,12 +25,12 @@
     {
       "label": "state-machine-comult",
       "source": {
-        "once": { "label": "STATE-MACHINE" }
+        "once": { "label": "state-machine" }
       },
       "target": {
         "exactly" : {
           "iterations": 2,
-          "label": "STATE-MACHINE"
+          "label": "state-machine"
         }
       },
       "rules": [
@@ -48,23 +48,23 @@
     {
       "label": "state-machine-counit",
       "source": {
-        "once": { "label": "STATE-MACHINE" }
+        "once": { "label": "state-machine" }
       },
       "target": {
-        "once": { "label": "UNIT-INTERFACE" }
+        "once": { "label": "unit-interface" }
       },
       "rules": [
-        { "from": ["UNIT-ACTION"], "to": ["AtoA"] },
-        { "from": ["UNIT-ACTION"], "to": ["BtoB"] }
+        { "from": ["unit-action"], "to": ["AtoA"] },
+        { "from": ["unit-action"], "to": ["BtoB"] }
       ]
     },
     {
       "label": "word-generator",
       "source": {
-        "once": { "label": "STATE-MACHINE" }
+        "once": { "label": "state-machine" }
       },
       "target": {
-        "once": { "label": "WORDS" }
+        "once": { "label": "words" }
       },
       "rules": [
         { "from": ["0to0"], "to": ["AtoA"] },
@@ -77,12 +77,12 @@
     "where": [],
     "source": {
       "once": {
-        "label": "STATE-MACHINE"
+        "label": "state-machine"
       }
     },
     "target": {
       "any": {
-        "label": "WORDS"
+        "label": "words"
       }
     }
   }
