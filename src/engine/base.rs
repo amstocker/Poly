@@ -27,7 +27,7 @@ pub struct BaseEngine {
   pub sources: Domain<Action>,
 
   pub base_state_map: HashMap<Action, State>,
-  pub rule_map: HashMap<ElemIndex, HashSet<Rule<ElemIndex>>>,
+  pub rule_map: HashMap<ElemIndex, HashSet<Rule<ElemIndex, ElemIndex>>>,
 }
 
 impl BaseEngine {

@@ -8,7 +8,7 @@ pub struct Lens {
 pub struct Diagram {
 }
 
-pub enum LensType {
+pub enum LensTypeHint {
   Category,
   Monad,
   Iso,
@@ -16,8 +16,8 @@ pub enum LensType {
 }
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
-pub struct Rule<T> {
-  pub from: T,
-  pub to: T
+pub struct Rule<A, B> {
+  pub from: A,
+  pub to: B
 }
 
