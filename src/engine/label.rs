@@ -164,10 +164,10 @@ impl LabelLayer {
       label_map.insert(label, Lens {});
       for RuleConfig { from, to } in rules {
         let rule = Rule {
-          from: engine.targets.new(
+          from: engine.targets.insert(
             from.into_iter().map(|label| label_map.get(label).unwrap())
           ).unwrap(),
-          to: engine.sources.new(
+          to: engine.sources.insert(
             to.into_iter().rev().map(|label| label_map.get(label).unwrap())
           ).unwrap()
         };

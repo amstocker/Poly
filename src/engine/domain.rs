@@ -1,6 +1,4 @@
-use std::collections::{HashMap, HashSet};
-use std::fmt::Debug;
-use std::hash::Hash;
+use std::collections::HashSet;
 
 use super::util::PartialResult;
 
@@ -44,17 +42,17 @@ pub struct Domain<T> {
 
 impl<T> Domain<T>
 where
-  T: Eq + Copy + Hash
+  T: Eq + Copy
 {
   pub fn get(&self, index: ElemIndex) -> Iter<T> {
     Iter { domain: &self, index: Some(index) }
   }
   
-  pub fn new(&mut self, values: impl Iterator<Item = T>) -> Option<ElemIndex> {
-    self.new_with_next(values, None)
+  pub fn insert(&mut self, values: impl Iterator<Item = T>) -> Option<ElemIndex> {
+    self.insert_with_next(values, None)
   }
 
-  pub fn new_with_next(&mut self, mut values: impl Iterator<Item = T>, next: Option<ElemIndex>) -> Option<ElemIndex> {
+  pub fn insert_with_next(&mut self, mut values: impl Iterator<Item = T>, next: Option<ElemIndex>) -> Option<ElemIndex> {
     match values.next() {
       Some(value) => {
         let index = if let Some(elem) = self.elems.iter().find(|&elem|
@@ -77,7 +75,7 @@ where
         if let Some(next_index) = next {
           self.elems.get_mut(next_index).map(|elem| elem.prev.insert(index));
         }
-        self.new_with_next(values, Some(index))
+        self.insert_with_next(values, Some(index))
       },
       None => {
         if let Some(next_index) = next {

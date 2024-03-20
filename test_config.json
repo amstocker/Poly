@@ -25,12 +25,12 @@
     {
       "label": "state-machine-comult",
       "source": {
-        "once": { "label": "state-machine" }
+        "label": "state-machine"
       },
       "target": {
         "exactly" : {
           "iterations": 2,
-          "label": "state-machine"
+          "domain": { "label": "state-machine" }
         }
       },
       "rules": [
@@ -48,10 +48,10 @@
     {
       "label": "state-machine-counit",
       "source": {
-        "once": { "label": "state-machine" }
+        "label": "state-machine"
       },
       "target": {
-        "once": { "label": "unit-interface" }
+        "label": "unit-interface"
       },
       "rules": [
         { "from": ["unit-action"], "to": ["AtoA"] },
@@ -61,10 +61,10 @@
     {
       "label": "word-generator",
       "source": {
-        "once": { "label": "state-machine" }
+        "label": "state-machine"
       },
       "target": {
-        "once": { "label": "words" }
+        "label": "words"
       },
       "rules": [
         { "from": ["0to0"], "to": ["AtoA"] },
@@ -76,9 +76,7 @@
   "diagram": {
     "where": [],
     "source": {
-      "once": {
-        "label": "state-machine"
-      }
+      "label": "state-machine"
     },
     "target": {
       "any": {

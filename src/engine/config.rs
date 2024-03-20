@@ -46,18 +46,14 @@ pub struct DiagramConfig {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum Domain {
-  Once {
-    label: String
-  },
+  Label(String),
+  Any(Box<Domain>),
   Exactly {
     iterations: usize,
-    label: String
-  },
-  Any {
-    label: String
+    domain: Box<Domain>
   },
   Composition {
     first: Box<Domain>,
-    then: Box<Domain>
+    second: Box<Domain>
   }
 }
