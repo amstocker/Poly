@@ -131,9 +131,9 @@ impl<T> IndexedHandler<T> where T: Indexed + Copy {
 pub struct LabelLayer {
   states: IndexedHandler<State>,
   actions: IndexedHandler<Action>,
-  label_map: LabelMap,
+  pub label_map: LabelMap,
 
-  engine: BaseEngine 
+  pub engine: BaseEngine 
 }
 
 impl LabelLayer {

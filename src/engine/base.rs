@@ -38,20 +38,19 @@ impl BaseEngine {
       .unwrap()
   }
 
-  fn base_transduce(&self, mut queue: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
-    // Match target of diagram to see if it's Exactly or Any, then loop if any and once if otherwise.
+  fn base_transduce(&self, mut stack: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
     loop {
-      queue = match self.targets.recognize(queue) {
-        PartialResult::Partial(index, mut queue) => {
-          queue.extend(self.iter_source(index));
-          queue
+      stack = match self.targets.recognize(stack) {
+        PartialResult::Partial(index, mut stack) => {
+          stack.extend(self.iter_source(index));
+          stack
         },
-        PartialResult::Ok(index, mut queue) => {
-          queue.extend(self.iter_source(index));
-          return Ok(queue)
+        PartialResult::Ok(index, mut stack) => {
+          stack.extend(self.iter_source(index));
+          return Ok(stack)
         },
-        PartialResult::Error(queue) =>
-          return Err(queue)
+        PartialResult::Error(stack) =>
+          return Err(stack)
       }
     }
   }

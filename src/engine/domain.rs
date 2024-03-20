@@ -39,7 +39,7 @@ impl<T> Iterator for Iter<'_, T> where T: Copy {
 
 #[derive(Default, Debug)]
 pub struct Domain<T> {
-  elems: Vec<Elem<T>>
+  pub elems: Vec<Elem<T>>
 }
 
 impl<T> Domain<T>
@@ -52,13 +52,13 @@ where
   
   pub fn new(&mut self, values: impl Iterator<Item = T>) -> Option<ElemIndex> {
     let index = self.new_with_next(values, None)?;
-    self.elems.get_mut(index)?.maximal = true;
+    self.elems.get_mut(index).unwrap().maximal = true;
     Some(index)
   }
 
   pub fn new_with_next(&mut self, mut values: impl Iterator<Item = T>, next: Option<ElemIndex>) -> Option<ElemIndex> {
-    values.next()
-      .and_then(|value| {
+    match values.next() {
+      Some(value) => {
         let index = if let Some(elem) = self.elems.iter().find(|&elem|
           elem.value == value
           && elem.next == next
@@ -76,14 +76,13 @@ where
           index
         };
 
-        next.and_then(|next_index|
-          self.elems.get_mut(next_index)
-            .map(|elem| elem.prev.insert(index))
-        );
-
+        if let Some(next_index) = next {
+          self.elems.get_mut(next_index).map(|elem| elem.prev.insert(index));
+        }
         self.new_with_next(values, Some(index))
-      })
-      .or(next)
+      },
+      None => next,
+    }
   }
 
   pub fn iter_maximal(&self) -> impl Iterator<Item = &Elem<T>> {
@@ -92,7 +91,7 @@ where
 
   pub fn recognize(&self, mut stack: Vec<T>) -> PartialResult<ElemIndex, Vec<T>> {
     if let Some(value) = stack.pop() {
-      for elem in self.iter_maximal() {
+      for elem in self.iter_maximal().filter(|elem| elem.value == value) {
         stack = match self.recognize_at_index(stack, elem.next) {
           PartialResult::Error(stack) => stack,
           result =>
