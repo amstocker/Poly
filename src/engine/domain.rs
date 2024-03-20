@@ -51,9 +51,7 @@ where
   }
   
   pub fn new(&mut self, values: impl Iterator<Item = T>) -> Option<ElemIndex> {
-    let index = self.new_with_next(values, None)?;
-    self.elems.get_mut(index).unwrap().maximal = true;
-    Some(index)
+    self.new_with_next(values, None)
   }
 
   pub fn new_with_next(&mut self, mut values: impl Iterator<Item = T>, next: Option<ElemIndex>) -> Option<ElemIndex> {
@@ -81,7 +79,12 @@ where
         }
         self.new_with_next(values, Some(index))
       },
-      None => next,
+      None => {
+        if let Some(next_index) = next {
+          self.elems.get_mut(next_index).map(|elem| elem.maximal = true);
+        }
+        next
+      },
     }
   }
 
