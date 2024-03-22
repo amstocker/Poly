@@ -47,7 +47,8 @@ where
   pub fn get(&self, index: ElemIndex) -> Iter<T> {
     Iter { domain: &self, index: Some(index) }
   }
-  
+
+  // Expects values to be an iterator with values in order from from first to last. 
   pub fn insert(&mut self, values: impl Iterator<Item = T>) -> Option<ElemIndex> {
     self.insert_with_next(values, None)
   }
