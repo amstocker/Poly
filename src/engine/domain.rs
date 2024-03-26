@@ -92,15 +92,12 @@ where
   }
 
   pub fn recognize(&self, mut stack: Vec<T>) -> PartialResult<ElemIndex, Vec<T>> {
-    if let Some(value) = stack.pop() {
-      for elem in self.iter_maximal().filter(|elem| elem.value == value) {
-        stack = match self.recognize_at_index(stack, elem.next) {
-          PartialResult::Error(stack) => stack,
-          result =>
-            return result.map(|_| elem.index)
-        }
+    for elem in self.iter_maximal() {
+      stack = match self.recognize_at_index(stack, Some(elem.index)) {
+        PartialResult::Error(stack) => stack,
+        result =>
+          return result.map(|_| elem.index)
       }
-      stack.push(value);
     }
     PartialResult::Error(stack)
   }

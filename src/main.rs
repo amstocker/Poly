@@ -66,16 +66,16 @@ fn main() {
     let span = Span {
         interactions: vec![
             Interaction {
-                source: Action { state: 0, action: 0 },
-                target: Action { state: 1, action: 0 }
+                source: Operation { state: 0, action: 0 },
+                target: Operation { state: 1, action: 0 }
             },
             Interaction {
-                source: Action { state: 0, action: 1 },
-                target: Action { state: 1, action: 0 }
+                source: Operation { state: 0, action: 1 },
+                target: Operation { state: 1, action: 0 }
             },
             Interaction {
-                source: Action { state: 2, action: 0 },
-                target: Action { state: 1, action: 0 }
+                source: Operation { state: 2, action: 0 },
+                target: Operation { state: 1, action: 0 }
             }
         ]
     };
