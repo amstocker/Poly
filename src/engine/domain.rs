@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use super::util::PartialResult;
 
 
@@ -10,7 +8,6 @@ pub struct Elem<T> {
   index: ElemIndex,
   value: T,
   next: Option<ElemIndex>,
-  prev: HashSet<ElemIndex>,
   maximal: bool
 }
 
@@ -57,25 +54,14 @@ where
     match values.next() {
       Some(value) => {
         let index = if let Some(elem) = self.elems.iter().find(|&elem|
-          elem.value == value
-          && elem.next == next
+          elem.value == value && elem.next == next
         ) {
           elem.index
         } else {
           let index = self.elems.len();
-          self.elems.push(Elem {
-            index,
-            value,
-            next,
-            prev: HashSet::new(),
-            maximal: false
-          });
+          self.elems.push(Elem { index, value, next, maximal: false });
           index
         };
-
-        if let Some(next_index) = next {
-          self.elems.get_mut(next_index).map(|elem| elem.prev.insert(index));
-        }
         self.insert_with_next(values, Some(index))
       },
       None => {
@@ -119,17 +105,13 @@ where
         } else {
           stack.push(value);
           PartialResult::Error(stack)
-      },
+        },
       (Some(value), None) => {
         stack.push(value);
         PartialResult::Partial((), stack)
       },
-      (None, None) => {
-        PartialResult::Ok((), stack)
-      },
-      (None, Some(_)) => {
-        PartialResult::Error(stack)
-      }
+      (None, None) => PartialResult::Ok((), stack),
+      (None, Some(_)) => PartialResult::Error(stack)
     }
   }
 }
