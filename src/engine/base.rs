@@ -36,13 +36,18 @@ impl BaseEngine {
       .unwrap()
   }
 
+  // TODO: We want to change this so that it "fans out" the recognition recursively.
+  // So we take a stack and then recursively recognize and push _chunks_ to a stack-like data-structure.
+  // This data structure should work with domains so that "extending" really just pushes a ref to the
+  // respective chunk in the source domain, all while treating it as a "stack" seamlessly.
+  // Hence, the transduce function should utilize both the source and target domains.
   pub fn base_transduce(&self, stack: &mut Stack<Action>) -> Result<(), ()> {
     loop {
       match self.targets.recognize(stack) {
         (Some(index), Recognized::Partial) =>
-          stack.extend_and_reset(self.iter_source(index)),
+          stack.extend(self.iter_source(index)),
         (Some(index), Recognized::All) => {
-          stack.extend_and_reset(self.iter_source(index));
+          stack.extend(self.iter_source(index));
           return Ok(())
         },
         (_, Recognized::Error) | (_, _) =>

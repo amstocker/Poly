@@ -34,9 +34,7 @@ impl<T: Copy> Iterator for Iter<'_, T> {
 pub struct RecognizedIter<'a, T, I> {
   domain: &'a Domain<T>,
   elem_iter: I,
-  stack: &'a mut Stack<T>,
-  current: ElemIndex,
-  state: Recognized,
+  stack: &'a mut Stack<T>
 }
 
 impl<T: Eq + Copy, I: Iterator<Item = ElemIndex>> Iterator for RecognizedIter<'_, T, I> {
@@ -110,9 +108,7 @@ where
     RecognizedIter {
       domain: self,
       elem_iter: self.iter_maximal(),
-      stack,
-      current: 0,
-      state: Recognized::Error
+      stack
     }
   }
 

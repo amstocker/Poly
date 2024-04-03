@@ -34,12 +34,13 @@ impl<T: Copy> Stack<T> {
     self.cursor = self.inner.len();
   }
 
-  pub fn extend_and_reset(&mut self, other: impl Iterator<Item = T>) {
+  pub fn extend(&mut self, other: impl Iterator<Item = T>) {
     self.inner.truncate(self.cursor);
     self.inner.extend(other);
     self.reset()
   }
 }
+
 
 impl<T> Into<Stack<T>> for Vec<T> {
   fn into(self) -> Stack<T> {
