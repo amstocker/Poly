@@ -12,13 +12,12 @@ pub struct Elem<T> {
 }
 
 
-#[derive(Clone, Copy)]
 pub struct Iter<'a, T> {
   domain: &'a Domain<T>,
   index: Option<ElemIndex>
 }
 
-impl<T> Iterator for Iter<'_, T> where T: Copy {
+impl<T: Copy> Iterator for Iter<'_, T> {
   type Item = T;
   
   fn next(&mut self) -> Option<T> {
@@ -32,9 +31,27 @@ impl<T> Iterator for Iter<'_, T> where T: Copy {
 }
 
 
+pub struct RecognizedIter<'a, T, I: Iterator<Item = ElemIndex>> {
+  domain: &'a Domain<T>,
+  maximal_iter: I,
+  stack: Vec<T>
+}
+
+impl<T: Eq + Copy, I: Iterator<Item = ElemIndex>> Iterator for RecognizedIter<'_, T, I> {
+  type Item = ElemIndex;
+
+  fn next(&mut self) -> Option<ElemIndex> {
+    match self.maximal_iter.next() {
+        Some(index) => self.domain.recognize(&mut self.stack).into(),
+        None => todo!(),
+    }
+  }
+}
+
+
 #[derive(Default, Debug)]
 pub struct Domain<T> {
-  pub elems: Vec<Elem<T>>
+  elems: Vec<Elem<T>>
 }
 
 impl<T> Domain<T>
@@ -77,18 +94,18 @@ where
     self.elems.iter().filter(|elem| elem.maximal)
   }
 
-  pub fn recognize(&self, mut stack: Vec<T>) -> PartialResult<ElemIndex, Vec<T>> {
+  pub fn recognize(&self, stack: &mut Vec<T>) -> PartialResult<ElemIndex> {
     for elem in self.iter_maximal() {
-      stack = match self.recognize_at_index(stack, Some(elem.index)) {
-        PartialResult::Error(stack) => stack,
+      match self.recognize_at_index(stack, Some(elem.index)) {
+        PartialResult::Error => (),
         result =>
           return result.map(|_| elem.index)
       }
     }
-    PartialResult::Error(stack)
+    PartialResult::Error
   }
 
-  pub fn recognize_at_index(&self, mut stack: Vec<T>, index: Option<ElemIndex>) -> PartialResult<(), Vec<T>> {
+  pub fn recognize_at_index(&self, stack: &mut Vec<T>, index: Option<ElemIndex>) -> PartialResult<()> {
     match (
       stack.pop(),
       index.and_then(|index| self.elems.get(index))
@@ -96,22 +113,22 @@ where
       (Some(value), Some(elem)) =>
         if elem.value == value {
           match self.recognize_at_index(stack, elem.next) {
-            PartialResult::Error(mut stack) => {
+            PartialResult::Error => {
               stack.push(value);
-              PartialResult::Error(stack)
+              PartialResult::Error
             },
             result => result
           }
         } else {
           stack.push(value);
-          PartialResult::Error(stack)
+          PartialResult::Error
         },
       (Some(value), None) => {
         stack.push(value);
-        PartialResult::Partial((), stack)
+        PartialResult::Partial(())
       },
-      (None, None) => PartialResult::Ok((), stack),
-      (None, Some(_)) => PartialResult::Error(stack)
+      (None, None) => PartialResult::Ok(()),
+      (None, Some(_)) => PartialResult::Error
     }
   }
 }

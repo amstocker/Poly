@@ -3,7 +3,6 @@ mod engine;
 
 use serde_json;
 
-use engine::Engine;
 use engine::label::LabelLayer;
 use engine::config::Config;
 
@@ -12,7 +11,7 @@ use engine::config::Config;
 fn transduce(engine: &LabelLayer, actions: &[&str]) {
     println!("{:?} -> {:?}",
         actions,
-        engine.transduce(actions).unwrap()
+        engine.transduce(actions)
     );
 }
 

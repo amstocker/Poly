@@ -3,8 +3,6 @@ use std::collections::{HashMap, HashSet};
 use super::domain::{Domain, ElemIndex};
 use super::rule::Rule;
 use super::util::PartialResult;
-use super::Engine;
-
 
 
 pub type StateIndex = usize;
@@ -38,28 +36,19 @@ impl BaseEngine {
       .unwrap()
   }
 
-  fn base_transduce(&self, mut stack: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
+  pub fn base_transduce(&self, stack: &mut Vec<Action>) -> Result<(), ()> {
     loop {
-      stack = match self.targets.recognize(stack) {
-        PartialResult::Partial(index, mut stack) => {
+      match self.targets.recognize(stack) {
+        PartialResult::Partial(index) =>
+          stack.extend(self.iter_source(index)),
+        PartialResult::Ok(index) => {
           stack.extend(self.iter_source(index));
-          stack
+          return Ok(())
         },
-        PartialResult::Ok(index, mut stack) => {
-          stack.extend(self.iter_source(index));
-          return Ok(stack)
-        },
-        PartialResult::Error(stack) =>
-          return Err(stack)
+        PartialResult::Error =>
+          return Err(())
       }
     }
-  }
-}
-
-
-impl Engine<Vec<Action>, Vec<Action>> for BaseEngine {
-  fn transduce(&self, queue: Vec<Action>) -> Result<Vec<Action>, Vec<Action>> {
-    self.base_transduce(queue)
   }
 }
 

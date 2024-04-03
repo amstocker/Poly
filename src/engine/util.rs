@@ -1,20 +1,30 @@
 
 
 #[derive(Debug)]
-pub enum PartialResult<A, B> {
-  Ok(A, B),
-  Partial(A, B),
-  Error(B)
+pub enum PartialResult<A> {
+  Ok(A),
+  Partial(A),
+  Error
 }
 
-impl<A, B> PartialResult<A, B> {
-  pub fn map<C>(self, f: impl FnOnce(A) -> C) -> PartialResult<C, B> {
+impl<A> PartialResult<A> {
+  pub fn map<B>(self, f: impl FnOnce(A) -> B) -> PartialResult<B> {
     match self {
-        PartialResult::Ok(a, b) => PartialResult::Ok(f(a), b),
-        PartialResult::Partial(a, b) => PartialResult::Partial(f(a), b),
-        PartialResult::Error(b) => PartialResult::Error(b),
+        PartialResult::Ok(a) => PartialResult::Ok(f(a)),
+        PartialResult::Partial(a) => PartialResult::Partial(f(a)),
+        PartialResult::Error => PartialResult::Error,
     }
   }
+}
+
+impl<A> Into<Option<A>> for PartialResult<A> {
+    fn into(self) -> Option<A> {
+      match self {
+        PartialResult::Ok(a) => Some(a),
+        PartialResult::Partial(a) => Some(a),
+        PartialResult::Error => None,
+      }
+    }
 }
 
 

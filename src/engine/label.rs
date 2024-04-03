@@ -5,7 +5,6 @@ use crate::engine::config::InterfaceConfig;
 use super::base::{Action, BaseEngine, State};
 use super::config::{Config, LensConfig, RuleConfig, StateConfig};
 use super::rule::{Rule, Lens};
-use super::Layer;
 
 
 
@@ -185,30 +184,26 @@ impl LabelLayer {
       engine
     }
   }
-}
 
-
-impl Layer<&[&str], Vec<String>> for LabelLayer {
-  type InnerIn = Vec<Action>;
-  type InnerOut = Vec<Action>;
-  type InnerEngine = BaseEngine;
-
-  fn inner(&self) -> &Self::InnerEngine {
-    &self.engine
-  }
-
-  fn translate(&self, queue: &[&str]) -> Vec<Action> {
-    queue.as_ref().iter()
+  fn translate(&self, stack: &[&str]) -> Vec<Action> {
+    stack.as_ref().iter()
       .map(|label| self.label_map.get(label).unwrap())
       .collect()
   }
 
-  fn untranslate(&self, queue: Vec<Action>) -> Vec<String> {
-    queue.iter()
+  fn untranslate(&self, stack: &Vec<Action>) -> Vec<String> {
+    stack.iter()
       .map(|&action|
         self.label_map.reverse_lookup(action).unwrap()
       )
       .cloned()
       .collect()
+  }
+
+  pub fn transduce(&self, stack: &[&str]) -> Vec<String> {
+    let mut stack = self.translate(stack);
+    self.engine.base_transduce(&mut stack);
+
+    self.untranslate(&stack)
   }
 }
