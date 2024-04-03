@@ -1,4 +1,4 @@
-use super::util::PartialResult;
+use super::util::{Recognized, ReversibleStack};
 
 
 pub type ElemIndex = usize;
@@ -31,20 +31,25 @@ impl<T: Copy> Iterator for Iter<'_, T> {
 }
 
 
-pub struct RecognizedIter<'a, T, I: Iterator<Item = ElemIndex>> {
+pub struct RecognizedIter<'a, T, I> {
   domain: &'a Domain<T>,
-  maximal_iter: I,
-  stack: Vec<T>
+  elem_iter: I,
+  stack: ReversibleStack<T>
 }
 
 impl<T: Eq + Copy, I: Iterator<Item = ElemIndex>> Iterator for RecognizedIter<'_, T, I> {
   type Item = ElemIndex;
 
   fn next(&mut self) -> Option<ElemIndex> {
-    match self.maximal_iter.next() {
-        Some(index) => self.domain.recognize(&mut self.stack).into(),
-        None => todo!(),
-    }
+    self.elem_iter.next().map(|index| {
+      loop {
+        match self.domain.recognize_at_index(&mut self.stack, Some(index)) {
+          Recognized::All => todo!(),
+          Recognized::Partial => todo!(),
+          Recognized::Error => todo!(),
+        }
+      }
+    })
   }
 }
 
@@ -94,18 +99,26 @@ where
     self.elems.iter().filter(|elem| elem.maximal)
   }
 
-  pub fn recognize(&self, stack: &mut Vec<T>) -> PartialResult<ElemIndex> {
-    for elem in self.iter_maximal() {
-      match self.recognize_at_index(stack, Some(elem.index)) {
-        PartialResult::Error => (),
-        result =>
-          return result.map(|_| elem.index)
-      }
+  pub fn recognize_all(&self, stack: ReversibleStack<T>) -> RecognizedIter<T, impl Iterator<Item = ElemIndex> + '_> {
+    RecognizedIter {
+      domain: &self,
+      elem_iter: self.iter_maximal().map(|elem| elem.index),
+      stack
     }
-    PartialResult::Error
   }
 
-  pub fn recognize_at_index(&self, stack: &mut Vec<T>, index: Option<ElemIndex>) -> PartialResult<()> {
+  pub fn recognize(&self, stack: &mut ReversibleStack<T>) -> (Option<ElemIndex>, Recognized) {
+    for elem in self.iter_maximal() {
+      match self.recognize_at_index(stack, Some(elem.index)) {
+        Recognized::Error => continue,
+        result =>
+          return (Some(elem.index), result)
+      }
+    }
+    (None, Recognized::Error)
+  }
+
+  pub fn recognize_at_index(&self, stack: &mut ReversibleStack<T>, index: Option<ElemIndex>) -> Recognized {
     match (
       stack.pop(),
       index.and_then(|index| self.elems.get(index))
@@ -113,22 +126,24 @@ where
       (Some(value), Some(elem)) =>
         if elem.value == value {
           match self.recognize_at_index(stack, elem.next) {
-            PartialResult::Error => {
-              stack.push(value);
-              PartialResult::Error
+            Recognized::Error => {
+              stack.undo();
+              Recognized::Error
             },
             result => result
           }
         } else {
-          stack.push(value);
-          PartialResult::Error
+          stack.undo();
+          Recognized::Error
         },
       (Some(value), None) => {
-        stack.push(value);
-        PartialResult::Partial(())
+        stack.undo();
+        Recognized::Partial
       },
-      (None, None) => PartialResult::Ok(()),
-      (None, Some(_)) => PartialResult::Error
+      (None, None) =>
+        Recognized::All,
+      (None, Some(_)) =>
+        Recognized::Error
     }
   }
 }

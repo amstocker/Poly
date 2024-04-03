@@ -1,31 +1,54 @@
 
 
 #[derive(Debug)]
-pub enum PartialResult<A> {
-  Ok(A),
-  Partial(A),
+pub enum Recognized {
+  All,
+  Partial,
   Error
 }
 
-impl<A> PartialResult<A> {
-  pub fn map<B>(self, f: impl FnOnce(A) -> B) -> PartialResult<B> {
-    match self {
-        PartialResult::Ok(a) => PartialResult::Ok(f(a)),
-        PartialResult::Partial(a) => PartialResult::Partial(f(a)),
-        PartialResult::Error => PartialResult::Error,
+pub struct ReversibleStack<T> {
+  pub inner: Vec<T>,
+  remainder: Vec<T>
+}
+
+impl<T: Copy> ReversibleStack<T> {
+  pub fn pop(&mut self) -> Option<T> {
+    let value = self.inner.pop();
+    if let Some(value) = value {
+      self.remainder.push(value);
+    }
+    value
+  }
+
+  pub fn undo(&mut self) {
+    if let Some(value) = self.remainder.pop() {
+      self.inner.push(value);
+    }
+  }
+
+  pub fn undo_all(&mut self) {
+    while let Some(value) = self.remainder.pop() {
+      self.inner.push(value);
     }
   }
 }
 
-impl<A> Into<Option<A>> for PartialResult<A> {
-    fn into(self) -> Option<A> {
-      match self {
-        PartialResult::Ok(a) => Some(a),
-        PartialResult::Partial(a) => Some(a),
-        PartialResult::Error => None,
-      }
+impl<T> Into<ReversibleStack<T>> for Vec<T> {
+  fn into(self) -> ReversibleStack<T> {
+    ReversibleStack {
+      inner: self,
+      remainder: Vec::new()
     }
+  }
 }
+
+impl<T> Into<Vec<T>> for ReversibleStack<T> {
+  fn into(self) -> Vec<T> {
+    self.inner
+  }
+}
+
 
 
 

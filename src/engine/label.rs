@@ -201,9 +201,10 @@ impl LabelLayer {
   }
 
   pub fn transduce(&self, stack: &[&str]) -> Vec<String> {
-    let mut stack = self.translate(stack);
-    self.engine.base_transduce(&mut stack);
+    let mut stack = self.translate(stack).into();
+    
+    self.engine.base_transduce(&mut stack).unwrap();
 
-    self.untranslate(&stack)
+    self.untranslate(&stack.into())
   }
 }
