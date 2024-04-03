@@ -1,4 +1,4 @@
-use super::util::{Recognized, ReversibleStack};
+use super::util::{Recognized, Stack};
 
 
 pub type ElemIndex = usize;
@@ -34,22 +34,27 @@ impl<T: Copy> Iterator for Iter<'_, T> {
 pub struct RecognizedIter<'a, T, I> {
   domain: &'a Domain<T>,
   elem_iter: I,
-  stack: ReversibleStack<T>
+  stack: &'a mut Stack<T>,
+  current: ElemIndex,
+  state: Recognized,
 }
 
 impl<T: Eq + Copy, I: Iterator<Item = ElemIndex>> Iterator for RecognizedIter<'_, T, I> {
   type Item = ElemIndex;
 
   fn next(&mut self) -> Option<ElemIndex> {
-    self.elem_iter.next().map(|index| {
-      loop {
-        match self.domain.recognize_at_index(&mut self.stack, Some(index)) {
-          Recognized::All => todo!(),
-          Recognized::Partial => todo!(),
-          Recognized::Error => todo!(),
+    loop {
+      self.stack.reset();
+      match self.elem_iter.next() {
+        None => return None,
+        some_index => match self.domain.recognize_at_index(self.stack, some_index) {
+          Recognized::All | Recognized::Partial =>
+            return some_index,
+          Recognized::Error =>
+            continue
         }
       }
-    })
+    }
   }
 }
 
@@ -95,30 +100,34 @@ where
     }
   }
 
-  pub fn iter_maximal(&self) -> impl Iterator<Item = &Elem<T>> {
-    self.elems.iter().filter(|elem| elem.maximal)
+  pub fn iter_maximal(&self) -> impl Iterator<Item = ElemIndex> + '_ {
+    self.elems.iter()
+      .filter(|elem| elem.maximal)
+      .map(|elem| elem.index)
   }
 
-  pub fn recognize_all(&self, stack: ReversibleStack<T>) -> RecognizedIter<T, impl Iterator<Item = ElemIndex> + '_> {
+  pub fn recognize_all<'a>(&'a self, stack: &'a mut Stack<T>) -> RecognizedIter<T, impl Iterator<Item = ElemIndex> + '_> {
     RecognizedIter {
-      domain: &self,
-      elem_iter: self.iter_maximal().map(|elem| elem.index),
-      stack
+      domain: self,
+      elem_iter: self.iter_maximal(),
+      stack,
+      current: 0,
+      state: Recognized::Error
     }
   }
 
-  pub fn recognize(&self, stack: &mut ReversibleStack<T>) -> (Option<ElemIndex>, Recognized) {
-    for elem in self.iter_maximal() {
-      match self.recognize_at_index(stack, Some(elem.index)) {
+  pub fn recognize(&self, stack: &mut Stack<T>) -> (Option<ElemIndex>, Recognized) {
+    for index in self.iter_maximal() {
+      match self.recognize_at_index(stack, Some(index)) {
         Recognized::Error => continue,
         result =>
-          return (Some(elem.index), result)
+          return (Some(index), result)
       }
     }
     (None, Recognized::Error)
   }
 
-  pub fn recognize_at_index(&self, stack: &mut ReversibleStack<T>, index: Option<ElemIndex>) -> Recognized {
+  pub fn recognize_at_index(&self, stack: &mut Stack<T>, index: Option<ElemIndex>) -> Recognized {
     match (
       stack.pop(),
       index.and_then(|index| self.elems.get(index))

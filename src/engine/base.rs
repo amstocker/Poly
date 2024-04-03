@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::domain::{Domain, ElemIndex};
 use super::rule::Rule;
-use super::util::{Recognized, ReversibleStack};
+use super::util::{Recognized, Stack};
 
 
 pub type StateIndex = usize;
@@ -36,13 +36,13 @@ impl BaseEngine {
       .unwrap()
   }
 
-  pub fn base_transduce(&self, stack: &mut ReversibleStack<Action>) -> Result<(), ()> {
+  pub fn base_transduce(&self, stack: &mut Stack<Action>) -> Result<(), ()> {
     loop {
       match self.targets.recognize(stack) {
         (Some(index), Recognized::Partial) =>
-          stack.inner.extend(self.iter_source(index)),
+          stack.extend_and_reset(self.iter_source(index)),
         (Some(index), Recognized::All) => {
-          stack.inner.extend(self.iter_source(index));
+          stack.extend_and_reset(self.iter_source(index));
           return Ok(())
         },
         (_, Recognized::Error) | (_, _) =>
