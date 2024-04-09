@@ -84,8 +84,6 @@ where
   pub fn recognize_at_index(&self, index: Option<ElemIndex>, mut values: impl Iterator<Item = T>) -> Recognized {
     match (
       values.next(),
-
-      // TODO: If this is None, could mean invalid index.
       index.and_then(|index| self.elems.get(index))
     ) {
       (Some(value), Some(elem)) if elem.value == value =>
