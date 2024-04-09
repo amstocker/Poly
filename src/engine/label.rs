@@ -1,10 +1,11 @@
-use std::collections::{hash_map, HashMap, HashSet};
+use std::collections::{hash_map, HashMap};
 
 use crate::engine::config::InterfaceConfig;
 
-use super::base::{Action, BaseEngine, State};
+use super::base::{Action, Lens, State};
 use super::config::{Config, LensConfig, RuleConfig, StateConfig};
-use super::rule::{Rule, Lens};
+use super::rule::Rule;
+use super::tree::Tree;
 
 
 
@@ -12,7 +13,6 @@ use super::rule::{Rule, Lens};
 pub enum Labeled {
   Action(Action),
   State(State),
-  Lens(Lens)
 }
 
 impl Into<Labeled> for State {
@@ -24,12 +24,6 @@ impl Into<Labeled> for State {
 impl Into<Labeled> for Action {
   fn into(self) -> Labeled {
     Labeled::Action(self)
-  }
-}
-
-impl Into<Labeled> for Lens {
-  fn into(self) -> Labeled {
-    Labeled::Lens(self)
   }
 }
 
@@ -51,14 +45,6 @@ impl From<Labeled> for Option<Action> {
   }
 }
 
-impl From<Labeled> for Option<Lens> {
-  fn from(value: Labeled) -> Self {
-    match value {
-      Labeled::Lens(lens) => Some(lens),
-      _ => None
-    }
-  }
-}
 
 
 #[derive(Default)]
@@ -132,12 +118,12 @@ pub struct LabelLayer {
   actions: IndexedHandler<Action>,
   pub label_map: LabelMap,
 
-  pub engine: BaseEngine 
+  pub engine: Lens 
 }
 
 impl LabelLayer {
   pub fn from_config(config: Config) -> Self {
-    let mut engine = BaseEngine::default();
+    let mut engine = Lens::default();
 
     let mut states = IndexedHandler::default();
     let mut actions = IndexedHandler::default();
@@ -160,7 +146,6 @@ impl LabelLayer {
     }
 
     for LensConfig { label, rules, .. } in config.lenses {
-      label_map.insert(label, Lens {});
       for RuleConfig { from, to } in rules {
         let rule = Rule {
           from: engine.targets.insert(
@@ -170,10 +155,7 @@ impl LabelLayer {
             to.into_iter().rev().map(|label| label_map.get(label).unwrap())
           ).unwrap()
         };
-        engine.rule_map
-          .entry(rule.from)
-          .or_insert(HashSet::new())
-          .insert(rule);
+        engine.rules.push(rule)
       }
     }
 
@@ -191,20 +173,25 @@ impl LabelLayer {
       .collect()
   }
 
-  fn untranslate(&self, stack: &Vec<Action>) -> Vec<String> {
-    stack.iter()
-      .map(|&action|
+  fn untranslate(&self, stack: impl Iterator<Item = Action>) -> Vec<String> {
+    stack
+      .map(|action|
         self.label_map.reverse_lookup(action).unwrap()
       )
       .cloned()
       .collect()
   }
 
-  pub fn transduce(&self, stack: &[&str]) -> Vec<String> {
-    let mut stack = self.translate(stack).into();
+  pub fn transduce(&self, stack: &[&str]) -> Vec<Vec<String>> {
+    let mut tree: Tree<Action> = self.translate(stack).into();
+    let parent = tree.top();
     
-    self.engine.base_transduce(&mut stack).unwrap();
+    let nodes = self.engine.transduce_once(&mut tree, parent);
 
-    self.untranslate(&stack.into())
+    let mut tranductions = Vec::new();
+    for parent in nodes {
+      tranductions.push(self.untranslate(tree.branch(parent)));
+    }
+    tranductions
   }
 }

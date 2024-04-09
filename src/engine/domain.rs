@@ -1,6 +1,3 @@
-use super::util::{Recognized, Stack};
-
-
 pub type ElemIndex = usize;
 
 #[derive(Debug)]
@@ -10,7 +7,6 @@ pub struct Elem<T> {
   next: Option<ElemIndex>,
   maximal: bool
 }
-
 
 pub struct Iter<'a, T> {
   domain: &'a Domain<T>,
@@ -30,30 +26,11 @@ impl<T: Copy> Iterator for Iter<'_, T> {
   }
 }
 
-
-pub struct RecognizedIter<'a, T, I> {
-  domain: &'a Domain<T>,
-  elem_iter: I,
-  stack: &'a mut Stack<T>
-}
-
-impl<T: Eq + Copy, I: Iterator<Item = ElemIndex>> Iterator for RecognizedIter<'_, T, I> {
-  type Item = ElemIndex;
-
-  fn next(&mut self) -> Option<ElemIndex> {
-    loop {
-      self.stack.reset();
-      match self.elem_iter.next() {
-        None => return None,
-        some_index => match self.domain.recognize_at_index(self.stack, some_index) {
-          Recognized::All | Recognized::Partial =>
-            return some_index,
-          Recognized::Error =>
-            continue
-        }
-      }
-    }
-  }
+#[derive(Debug)]
+pub enum Recognized {
+  All,
+  Partial,
+  Error
 }
 
 
@@ -67,7 +44,7 @@ where
   T: Eq + Copy
 {
   pub fn get(&self, index: ElemIndex) -> Iter<T> {
-    Iter { domain: &self, index: Some(index) }
+    Iter { domain: self, index: Some(index) }
   }
 
   // Expects values to be an iterator with values in order from from first to last. 
@@ -104,51 +81,18 @@ where
       .map(|elem| elem.index)
   }
 
-  pub fn recognize_all<'a>(&'a self, stack: &'a mut Stack<T>) -> RecognizedIter<T, impl Iterator<Item = ElemIndex> + '_> {
-    RecognizedIter {
-      domain: self,
-      elem_iter: self.iter_maximal(),
-      stack
-    }
-  }
-
-  pub fn recognize(&self, stack: &mut Stack<T>) -> (Option<ElemIndex>, Recognized) {
-    for index in self.iter_maximal() {
-      match self.recognize_at_index(stack, Some(index)) {
-        Recognized::Error => continue,
-        result =>
-          return (Some(index), result)
-      }
-    }
-    (None, Recognized::Error)
-  }
-
-  pub fn recognize_at_index(&self, stack: &mut Stack<T>, index: Option<ElemIndex>) -> Recognized {
+  pub fn recognize_at_index(&self, index: Option<ElemIndex>, mut values: impl Iterator<Item = T>) -> Recognized {
     match (
-      stack.pop(),
+      values.next(),
+
+      // TODO: If this is None, could mean invalid index.
       index.and_then(|index| self.elems.get(index))
     ) {
-      (Some(value), Some(elem)) =>
-        if elem.value == value {
-          match self.recognize_at_index(stack, elem.next) {
-            Recognized::Error => {
-              stack.undo();
-              Recognized::Error
-            },
-            result => result
-          }
-        } else {
-          stack.undo();
-          Recognized::Error
-        },
-      (Some(value), None) => {
-        stack.undo();
-        Recognized::Partial
-      },
-      (None, None) =>
-        Recognized::All,
-      (None, Some(_)) =>
-        Recognized::Error
+      (Some(value), Some(elem)) if elem.value == value =>
+        self.recognize_at_index(elem.next, values),
+      (None, None)    => Recognized::All,
+      (Some(_), None) => Recognized::Partial,
+      (_, _)          => Recognized::Error
     }
   }
 }
