@@ -44,8 +44,8 @@ impl Lens {
       .filter_map(move |index| {
         let mut branch = tree.branch(parent);
         match self.targets.recognize_at_index(Some(index), &mut branch) {
-            Recognized::All     => Some((Recognized::All, index, branch.parent())),
-            Recognized::Partial => Some((Recognized::Partial, index, branch.parent())),
+            Recognized::All     => Some((Recognized::All, index, branch.index())),
+            Recognized::Partial => Some((Recognized::Partial, index, branch.index())),
             Recognized::Error   => None,
         }
       })

@@ -71,6 +71,24 @@
         { "from": ["0to1"], "to": ["AtoB"] },
         { "from": ["1to0"], "to": ["BtoA"] }
       ]
+    },
+    {
+      "label": "wrench",
+      "source": {
+        "exactly" : {
+          "iterations": 3,
+          "domain": { "label": "state-machine" }
+        }
+      },
+      "target": {
+        "exactly" : {
+          "iterations": 2,
+          "domain": { "label": "state-machine" }
+        }
+      },
+      "rules": [
+        { "from": ["AtoA", "AtoA"], "to": ["AtoA", "AtoA", "AtoA"] }  
+      ]
     }
   ],
   "diagram": {

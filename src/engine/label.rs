@@ -145,7 +145,7 @@ impl LabelLayer {
       }
     }
 
-    for LensConfig { label, rules, .. } in config.lenses {
+    for LensConfig { rules, .. } in config.lenses {
       for RuleConfig { from, to } in rules {
         let rule = Rule {
           from: engine.targets.insert(
@@ -185,12 +185,14 @@ impl LabelLayer {
   pub fn transduce(&self, stack: &[&str]) -> Vec<Vec<String>> {
     let mut tree: Tree<Action> = self.translate(stack).into();
     let parent = tree.top();
-    
+
     let nodes = self.engine.transduce_once(&mut tree, parent);
 
     let mut tranductions = Vec::new();
     for parent in nodes {
-      tranductions.push(self.untranslate(tree.branch(parent)));
+      let mut untranslated = self.untranslate(tree.branch(parent));
+      untranslated.reverse();
+      tranductions.push(untranslated);
     }
     tranductions
   }
