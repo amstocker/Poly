@@ -188,6 +188,7 @@ impl LabelLayer {
 
     let nodes = self.engine.transduce_once(&mut tree, parent);
 
+    // TODO: Better way to do this?
     let mut tranductions = Vec::new();
     for parent in nodes {
       let mut untranslated = self.untranslate(tree.branch(parent));

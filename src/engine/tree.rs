@@ -9,9 +9,10 @@ pub struct Node<T> {
 
 #[derive(Debug)]
 pub struct Tree<T> {
-  pub nodes: Vec<Node<T>>
+  nodes: Vec<Node<T>>
 }
 
+#[derive(Clone, Copy)]
 pub struct Branch<'a, T> {
   tree: &'a Tree<T>,
   parent: Option<NodeIndex>,

@@ -33,6 +33,10 @@ pub enum Recognized {
   Error
 }
 
+pub struct Recognizer {
+  // impl Iterator
+}
+
 
 #[derive(Default, Debug)]
 pub struct Domain<T> {
