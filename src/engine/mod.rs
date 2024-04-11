@@ -4,4 +4,3 @@ pub mod domain;
 pub mod interaction;
 pub mod label;
 pub mod rule;
-pub mod tree;

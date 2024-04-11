@@ -5,7 +5,6 @@ use crate::engine::config::InterfaceConfig;
 use super::base::{Action, Lens, State};
 use super::config::{Config, LensConfig, RuleConfig, StateConfig};
 use super::rule::Rule;
-use super::tree::Tree;
 
 
 
@@ -173,10 +172,10 @@ impl LabelLayer {
       .collect()
   }
 
-  fn untranslate(&self, stack: impl Iterator<Item = Action>) -> Vec<String> {
-    stack
+  fn untranslate(&self, stack: Vec<Action>) -> Vec<String> {
+    stack.iter()
       .map(|action|
-        self.label_map.reverse_lookup(action).unwrap()
+        self.label_map.reverse_lookup(*action).unwrap()
       )
       .cloned()
       .collect()
@@ -184,7 +183,7 @@ impl LabelLayer {
 
   pub fn transduce(&self, stack: &[&str]) -> Vec<Vec<String>> {
     self.engine.recognize(self.translate(stack))
-      .map(|stack| self.untranslate(stack.iter().copied()))
+      .map(|stack| self.untranslate(stack))
       .collect()
   }
 }
