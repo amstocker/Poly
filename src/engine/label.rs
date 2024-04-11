@@ -2,9 +2,8 @@ use std::collections::{hash_map, HashMap};
 
 use crate::engine::config::InterfaceConfig;
 
-use super::base::{Action, Lens, State};
+use super::lens::{Action, Lens, State, Rule};
 use super::config::{Config, LensConfig, RuleConfig, StateConfig};
-use super::rule::Rule;
 
 
 
@@ -14,15 +13,15 @@ pub enum Labeled {
   State(State),
 }
 
-impl Into<Labeled> for State {
-  fn into(self) -> Labeled {
-    Labeled::State(self)
+impl From<State> for Labeled {
+  fn from(state: State) -> Labeled {
+    Labeled::State(state)
   }
 }
 
-impl Into<Labeled> for Action {
-  fn into(self) -> Labeled {
-    Labeled::Action(self)
+impl From<Action> for Labeled {
+  fn from(action: Action) -> Labeled {
+    Labeled::Action(action)
   }
 }
 
@@ -147,12 +146,8 @@ impl LabelLayer {
     for LensConfig { rules, .. } in config.lenses {
       for RuleConfig { from, to } in rules {
         let rule = Rule {
-          from: engine.targets.insert(
-            from.into_iter().map(|label| label_map.get(label).unwrap())
-          ).unwrap(),
-          to: engine.sources.insert(
-            to.into_iter().rev().map(|label| label_map.get(label).unwrap())
-          ).unwrap()
+          from: from.into_iter().map(|label| label_map.get(label).unwrap()).collect(),
+          to: to.into_iter().map(|label| label_map.get(label).unwrap()).collect()
         };
         engine.rules.push(rule)
       }

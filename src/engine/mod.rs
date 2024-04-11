@@ -1,6 +1,3 @@
-pub mod base;
+pub mod lens;
 pub mod config;
-pub mod domain;
-pub mod interaction;
 pub mod label;
-pub mod rule;

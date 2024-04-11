@@ -57,34 +57,4 @@ fn main() {
         transduce(&engine, &actions);
     }
 
-
-
-    // Alternate idea for engine.
-    use engine::interaction::*;
-
-    let span = Span {
-        interactions: vec![
-            Interaction {
-                source: Operation { state: 0, action: 0 },
-                target: Operation { state: 1, action: 0 }
-            },
-            Interaction {
-                source: Operation { state: 0, action: 1 },
-                target: Operation { state: 1, action: 0 }
-            },
-            Interaction {
-                source: Operation { state: 2, action: 0 },
-                target: Operation { state: 1, action: 0 }
-            }
-        ]
-    };
-
-    for interaction in span.interact(
-        Interaction {
-            source: Query::State { state: 0 },
-            target: Query::Any
-        }
-    ) {
-        println!("{:?}", interaction);
-    }
 }
