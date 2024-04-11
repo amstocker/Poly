@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::domain::{Domain, ElemIndex, Recognized};
 use super::rule::Rule;
-use super::tree::{Branch, NodeIndex, Tree};
+
 
 
 pub type StateIndex = usize;
@@ -18,9 +18,6 @@ pub struct Action {
   pub index: ActionIndex
 }
 
-pub struct Transducer {
-  // impl Iterator ?
-}
 
 
 #[derive(Default)]
@@ -39,34 +36,23 @@ impl Lens {
       .map(|rule| rule.to)
   }
 
-  fn recognize<'a>(
-    &'a self,
-    branch: Branch<'a, Action>
-  ) -> impl Iterator<Item = (Recognized, ElemIndex, Option<NodeIndex>)> + 'a {
+  pub fn recognize(&self, stack: Vec<Action>) -> impl Iterator<Item = Vec<Action>> + '_ {
     self.targets.iter_maximal()
       .filter_map(move |index| {
-        let mut branch = branch.clone();
-        match self.targets.recognize_at_index(Some(index), &mut branch) {
+        let mut stack = stack.clone();
+        match self.targets.recognize_at_index(Some(index), &mut stack) {
           Recognized::Error => None,
-          other => Some((other, index, branch.index()))
+          _                 => Some((index, stack))
         }
       })
-  }
-
-  pub fn transduce_once(&self, tree: &mut Tree<Action>, parent: Option<NodeIndex>) -> Vec<Option<NodeIndex>> {
-
-    // TODO: This is probably fine and does not need to be optimized, but if we wanted to turn this whole thing
-    //       into a generator we would need Tree to be something like an immutable data structure.
-    let recognitions = self.recognize(tree.branch(parent)).collect::<Vec<_>>();
-    
-    // TODO: This, however, could easily be turned into a generator.
-    let mut indices = Vec::new();
-    for (_, from_index, parent) in recognitions {
-      for to_index in self.iter_to(from_index) {
-        indices.push(tree.extend(parent, self.sources.get(to_index)));
-      }
-    }
-    indices
+      .flat_map(move |(index, stack)| {
+        self.iter_to(index)
+          .map(move |index| {
+            let mut stack = stack.clone();
+            stack.extend(self.sources.get(index));
+            stack
+          })
+      })
   }
 
 }

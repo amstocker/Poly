@@ -183,18 +183,8 @@ impl LabelLayer {
   }
 
   pub fn transduce(&self, stack: &[&str]) -> Vec<Vec<String>> {
-    let mut tree: Tree<Action> = self.translate(stack).into();
-    let parent = tree.top();
-
-    let nodes = self.engine.transduce_once(&mut tree, parent);
-
-    // TODO: Better way to do this?
-    let mut tranductions = Vec::new();
-    for parent in nodes {
-      let mut untranslated = self.untranslate(tree.branch(parent));
-      untranslated.reverse();
-      tranductions.push(untranslated);
-    }
-    tranductions
+    self.engine.recognize(self.translate(stack))
+      .map(|stack| self.untranslate(stack.iter().copied()))
+      .collect()
   }
 }

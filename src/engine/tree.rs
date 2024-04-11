@@ -15,13 +15,13 @@ pub struct Tree<T> {
 #[derive(Clone, Copy)]
 pub struct Branch<'a, T> {
   tree: &'a Tree<T>,
-  parent: Option<NodeIndex>,
-  current: Option<NodeIndex>
+  next_parent: Option<NodeIndex>,
+  current_parent: Option<NodeIndex>
 }
 
 impl<T> Branch<'_, T> {
-  pub fn index(&self) -> Option<NodeIndex> {
-    self.current
+  pub fn parent(&self) -> Option<NodeIndex> {
+    self.current_parent
   }
 }
 
@@ -29,11 +29,11 @@ impl<T: Copy> Iterator for Branch<'_, T> {
   type Item = T;
 
   fn next(&mut self) -> Option<T> {
-    self.current = self.parent;
-    self.parent
+    self.current_parent = self.next_parent;
+    self.next_parent
       .and_then(|index| self.tree.nodes.get(index))
       .map(|node| {
-        self.parent = node.parent;
+        self.next_parent = node.parent;
         node.value
       })
   }
@@ -46,10 +46,10 @@ impl<T: Copy> Tree<T> {
   }
 
   pub fn branch(&self, parent: Option<NodeIndex>) -> Branch<T> {
-    Branch { tree: self, parent, current: None }
+    Branch { tree: self, next_parent: parent, current_parent: None }
   }
 
-  pub fn push(&mut self, parent: Option<NodeIndex>, value: T) -> Option<NodeIndex> {
+  fn push(&mut self, parent: Option<NodeIndex>, value: T) -> Option<NodeIndex> {
     let index = self.nodes.len();
     self.nodes.push(Node {
       value,

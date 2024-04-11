@@ -1,3 +1,4 @@
+
 pub type ElemIndex = usize;
 
 #[derive(Debug)]
@@ -31,10 +32,6 @@ pub enum Recognized {
   All,
   Partial,
   Error
-}
-
-pub struct Recognizer {
-  // impl Iterator
 }
 
 
@@ -85,16 +82,30 @@ where
       .map(|elem| elem.index)
   }
 
-  pub fn recognize_at_index(&self, index: Option<ElemIndex>, mut values: impl Iterator<Item = T>) -> Recognized {
+  pub fn recognize_at_index(&self, index: Option<ElemIndex>, stack: &mut Vec<T>) -> Recognized {
     match (
-      values.next(),
+      stack.pop(),
       index.and_then(|index| self.elems.get(index))
     ) {
-      (Some(value), Some(elem)) if elem.value == value =>
-        self.recognize_at_index(elem.next, values),
-      (None, None)    => Recognized::All,
-      (Some(_), None) => Recognized::Partial,
-      (_, _)          => Recognized::Error
+      (Some(value), Some(elem)) =>
+        if elem.value == value {
+          match self.recognize_at_index(elem.next, stack) {
+            Recognized::Error => {
+              stack.push(value);
+              Recognized::Error
+            },
+            result => result
+          }
+        } else {
+          stack.push(value);
+          Recognized::Error
+        },
+      (Some(value), None) => {
+        stack.push(value);
+        Recognized::Partial
+      },
+      (None, None) => Recognized::All,
+      (None, Some(_)) => Recognized::Error
     }
   }
 }
