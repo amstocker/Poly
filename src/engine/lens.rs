@@ -28,11 +28,11 @@ pub struct Lens {
 }
 
 impl Lens {
-  pub fn recognize(&self, stack: Vec<Action>) -> impl Iterator<Item = Vec<Action>> + '_ {
+  pub fn transduce(&self, stack: Vec<Action>) -> impl Iterator<Item = Vec<Action>> + '_ {
     self.rules.iter()
       .filter_map(move |Rule { from, to }| {
-        let mut stack = stack.clone();
         if from.len() <= stack.len() && &stack[(stack.len() - from.len())..] == from {
+          let mut stack = stack.clone();
           stack.truncate(stack.len() - from.len());
           stack.extend(to);
           Some(stack)

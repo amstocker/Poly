@@ -177,7 +177,7 @@ impl LabelLayer {
   }
 
   pub fn transduce(&self, stack: &[&str]) -> Vec<Vec<String>> {
-    self.engine.recognize(self.translate(stack))
+    self.engine.transduce(self.translate(stack))
       .map(|stack| self.untranslate(stack))
       .collect()
   }
