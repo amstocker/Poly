@@ -1,16 +1,16 @@
-use std::collections::HashMap;
+use im_rc::Vector;
 
 
 pub type StateIndex = usize;
 pub type ActionIndex = usize;
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Default, Debug)]
-pub struct State {
+pub struct StateHandle {
   pub index: StateIndex
 }
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Default, Debug)]
-pub struct Action {
+pub struct ActionHandle {
   pub index: ActionIndex
 }
 
@@ -20,21 +20,28 @@ pub struct Rule<A, B> {
   pub to: B
 }
 
+pub type Interface<Action> = Vec<Vec<Action>>;
+
 
 #[derive(Default)]
-pub struct Lens {
-  pub base_state_map: HashMap<Action, State>,
+pub struct Lens<Action> {
+  source: Interface<Action>,
+  target: Interface<Action>,
+
+  // TODO: The rules should be checked at run-time to ensure that they conform to the lens rules!
   pub rules: Vec<Rule<Vec<Action>, Vec<Action>>>
 }
 
-impl Lens {
-  pub fn transduce(&self, stack: Vec<Action>) -> impl Iterator<Item = Vec<Action>> + '_ {
+impl<Action: Copy + Eq> Lens<Action> {
+  pub fn transduce(&self, stack: impl Into<Vector<Action>>) -> impl Iterator<Item = Vector<Action>> + '_ {
+    let stack = stack.into();
     self.rules.iter()
       .filter_map(move |Rule { from, to }| {
-        if from.len() <= stack.len() && &stack[(stack.len() - from.len())..] == from {
-          let mut stack = stack.clone();
-          stack.truncate(stack.len() - from.len());
-          stack.extend(to);
+        let mut stack = stack.clone();
+        if from.len() <= stack.len()
+          && stack.slice(stack.len() - from.len()..).iter().eq(from)
+        {
+          stack.extend(to.iter().copied());
           Some(stack)
         } else {
           None

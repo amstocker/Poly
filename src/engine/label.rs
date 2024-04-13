@@ -2,31 +2,31 @@ use std::collections::{hash_map, HashMap};
 
 use crate::engine::config::InterfaceConfig;
 
-use super::lens::{Action, Lens, State, Rule};
+use super::lens::{ActionHandle, Lens, StateHandle, Rule};
 use super::config::{Config, LensConfig, RuleConfig, StateConfig};
 
 
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Labeled {
-  Action(Action),
-  State(State),
+  Action(ActionHandle),
+  State(StateHandle),
 }
 
-impl From<State> for Labeled {
-  fn from(state: State) -> Labeled {
+impl From<StateHandle> for Labeled {
+  fn from(state: StateHandle) -> Labeled {
     Labeled::State(state)
   }
 }
 
-impl From<Action> for Labeled {
-  fn from(action: Action) -> Labeled {
+impl From<ActionHandle> for Labeled {
+  fn from(action: ActionHandle) -> Labeled {
     Labeled::Action(action)
   }
 }
 
-impl From<Labeled> for Option<State> {
-  fn from(value: Labeled) -> Option<State> {
+impl From<Labeled> for Option<StateHandle> {
+  fn from(value: Labeled) -> Option<StateHandle> {
     match value {
       Labeled::State(state) => Some(state),
       _ => None
@@ -34,8 +34,8 @@ impl From<Labeled> for Option<State> {
   }
 }
 
-impl From<Labeled> for Option<Action> {
-  fn from(value: Labeled) -> Option<Action> {
+impl From<Labeled> for Option<ActionHandle> {
+  fn from(value: Labeled) -> Option<ActionHandle> {
     match value {
       Labeled::Action(action) => Some(action),
       _ => None
@@ -85,15 +85,15 @@ pub trait Indexed {
   fn build_with_index(index: usize) -> Self;
 }
 
-impl Indexed for State {
+impl Indexed for StateHandle {
   fn build_with_index(index: usize) -> Self {
-    State { index }
+    StateHandle { index }
   }
 }
 
-impl Indexed for Action {
+impl Indexed for ActionHandle {
   fn build_with_index(index: usize) -> Self {
-    Action { index } 
+    ActionHandle { index } 
   }
 }
 
@@ -112,11 +112,11 @@ impl<T> IndexedHandler<T> where T: Indexed + Copy {
 
 
 pub struct LabelLayer {
-  states: IndexedHandler<State>,
-  actions: IndexedHandler<Action>,
+  states: IndexedHandler<StateHandle>,
+  actions: IndexedHandler<ActionHandle>,
   pub label_map: LabelMap,
 
-  pub engine: Lens 
+  pub engine: Lens<ActionHandle> 
 }
 
 impl LabelLayer {
@@ -138,7 +138,6 @@ impl LabelLayer {
         for label in action_labels {
           let action = actions.new();
           label_map.insert(label, action);
-          engine.base_state_map.insert(action, state);
         }
       }
     }
@@ -161,16 +160,16 @@ impl LabelLayer {
     }
   }
 
-  fn translate(&self, stack: &[&str]) -> Vec<Action> {
+  fn translate(&self, stack: &[&str]) -> Vec<ActionHandle> {
     stack.as_ref().iter()
       .map(|label| self.label_map.get(label).unwrap())
       .collect()
   }
 
-  fn untranslate(&self, stack: Vec<Action>) -> Vec<String> {
-    stack.iter()
+  fn untranslate(&self, stack: impl IntoIterator<Item = ActionHandle>) -> Vec<String> {
+    stack.into_iter()
       .map(|action|
-        self.label_map.reverse_lookup(*action).unwrap()
+        self.label_map.reverse_lookup(action).unwrap()
       )
       .cloned()
       .collect()
