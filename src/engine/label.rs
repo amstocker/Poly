@@ -160,8 +160,8 @@ impl LabelLayer {
     }
   }
 
-  fn translate(&self, stack: &[&str]) -> Vec<ActionHandle> {
-    stack.as_ref().iter()
+  fn translate<S: AsRef<str>>(&self, stack: impl IntoIterator<Item = S>) -> Vec<ActionHandle> {
+    stack.into_iter()
       .map(|label| self.label_map.get(label).unwrap())
       .collect()
   }
@@ -175,8 +175,8 @@ impl LabelLayer {
       .collect()
   }
 
-  pub fn transduce(&self, stack: &[&str]) -> Vec<Vec<String>> {
-    self.engine.transduce(self.translate(stack))
+  pub fn transduce<S: AsRef<str>>(&self, stack: impl IntoIterator<Item = S>) -> Vec<Vec<String>> {
+    self.engine.transduce(self.translate(stack).into())
       .map(|stack| self.untranslate(stack))
       .collect()
   }

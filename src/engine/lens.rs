@@ -32,16 +32,29 @@ pub struct Lens<Action> {
   pub rules: Vec<Rule<Vec<Action>, Vec<Action>>>
 }
 
-impl<Action: Copy + Eq> Lens<Action> {
-  pub fn transduce(&self, stack: impl Into<Vector<Action>>) -> impl Iterator<Item = Vector<Action>> + '_ {
-    let stack = stack.into();
+
+#[inline]
+fn top_of_stack_eq<Action: Clone + PartialEq>(stack: &Vector<Action>, other: &Vec<Action>) -> bool {
+  if stack.len() < other.len() {
+    return false
+  }
+  let d = stack.len() - other.len();
+  for i in 0..other.len() {
+    if stack.get(i + d) != other.get(i) {
+      return false
+    }
+  }
+  true
+}
+
+impl<Action: Clone + PartialEq> Lens<Action> {
+  pub fn transduce(&self, stack: Vector<Action>) -> impl Iterator<Item = Vector<Action>> + '_ {
     self.rules.iter()
       .filter_map(move |Rule { from, to }| {
-        let mut stack = stack.clone();
-        if from.len() <= stack.len()
-          && stack.slice(stack.len() - from.len()..).iter().eq(from)
-        {
-          stack.extend(to.iter().copied());
+        if top_of_stack_eq(&stack, from) {
+          let mut stack = stack.clone();
+          stack.truncate(stack.len() - from.len());
+          stack.extend(to.iter().cloned());
           Some(stack)
         } else {
           None

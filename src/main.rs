@@ -1,19 +1,16 @@
 mod engine;
 
 
+use std::collections::HashMap;
+
+use engine::lens::ActionHandle;
+use im_rc::Vector;
 use serde_json;
 
 use engine::label::LabelLayer;
 use engine::config::Config;
 
 
-
-fn transduce(engine: &LabelLayer, actions: &[&str]) {
-    println!("{:?} -> {:?}",
-        actions,
-        engine.transduce(actions)
-    );
-}
 
 fn main() {
     let config = serde_json::from_str::<Config>(include_str!("../test_config.json")).unwrap();
@@ -31,7 +28,7 @@ fn main() {
     ];
 
     for actions in chains.into_iter() {
-        transduce(&engine, &actions);
+        println!("{:?} -> {:?}", actions, engine.transduce(actions));
     }
 
     let chains = [
@@ -54,7 +51,10 @@ fn main() {
     ];
 
     for actions in chains.into_iter() {
-        transduce(&engine, &actions);
+        println!("{:?} -> {:?}", actions, engine.transduce(actions));
     }
+
+
+    let mut map: HashMap<Vector<ActionHandle>, usize> = Default::default();
 
 }
