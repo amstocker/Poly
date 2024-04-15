@@ -175,9 +175,10 @@ impl LabelLayer {
       .collect()
   }
 
-  pub fn transduce<S: AsRef<str>>(&self, stack: impl IntoIterator<Item = S>) -> Vec<Vec<String>> {
-    self.engine.transduce(self.translate(stack).into())
-      .map(|stack| self.untranslate(stack))
-      .collect()
+  pub fn transduce<S: AsRef<str>>(&self, stack: impl IntoIterator<Item = S>) -> Result<Vec<Vec<String>>, ()> {
+    match self.engine.transduce(self.translate(stack).into()) {
+      Ok(iter) => Ok(iter.map(|stack| self.untranslate(stack)).collect()),
+      Err(stack) => Err(()),
+    }
   }
 }

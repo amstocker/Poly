@@ -25,9 +25,6 @@ pub type Interface<Action> = Vec<Vec<Action>>;
 
 #[derive(Default)]
 pub struct Lens<Action> {
-  source: Interface<Action>,
-  target: Interface<Action>,
-
   // TODO: The rules should be checked at run-time to ensure that they conform to the lens rules!
   pub rules: Vec<Rule<Vec<Action>, Vec<Action>>>
 }
@@ -48,8 +45,25 @@ fn top_of_stack_eq<Action: Clone + PartialEq>(stack: &Vector<Action>, other: &Ve
 }
 
 impl<Action: Clone + PartialEq> Lens<Action> {
-  pub fn transduce(&self, stack: Vector<Action>) -> impl Iterator<Item = Vector<Action>> + '_ {
-    self.rules.iter()
+  pub fn new<I1, I2>(rules: impl IntoIterator<Item = Rule<I1, I2>>) -> Self
+  where
+    I1: IntoIterator<Item = Action>,
+    I2: IntoIterator<Item = Action>
+  {
+    Lens {
+      rules: rules.into_iter()
+        .map(|Rule { from, to }|
+          Rule {
+            from: from.into_iter().collect(),
+            to: to.into_iter().collect()
+          }
+        ).collect()
+    }
+  }
+
+  pub fn transduce(&self, stack: Vector<Action>) -> Result<impl Iterator<Item = Vector<Action>> + '_, Vector<Action>> {
+    let ret_stack = stack.clone();
+    let mut iter = self.rules.iter()
       .filter_map(move |Rule { from, to }| {
         if top_of_stack_eq(&stack, from) {
           let mut stack = stack.clone();
@@ -60,6 +74,12 @@ impl<Action: Clone + PartialEq> Lens<Action> {
           None
         }
       })
+      .peekable();
+
+    match iter.peek() {
+      Some(_) => Ok(iter),
+      None => Err(ret_stack),
+    }
   }
 }
 
