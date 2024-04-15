@@ -75,7 +75,6 @@ impl<Action: Clone + PartialEq> Lens<Action> {
         }
       })
       .peekable();
-
     match iter.peek() {
       Some(_) => Ok(iter),
       None => Err(ret_stack),
