@@ -1,18 +1,6 @@
 use im_rc::Vector;
 
 
-pub type StateIndex = usize;
-pub type ActionIndex = usize;
-
-#[derive(Hash, PartialEq, Eq, Clone, Copy, Default, Debug)]
-pub struct StateHandle {
-  pub index: StateIndex
-}
-
-#[derive(Hash, PartialEq, Eq, Clone, Copy, Default, Debug)]
-pub struct ActionHandle {
-  pub index: ActionIndex
-}
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct Rule<A, B> {
@@ -20,18 +8,31 @@ pub struct Rule<A, B> {
   pub to: B
 }
 
-pub type Interface<Action> = Vec<Vec<Action>>;
+pub enum Composition<T> {
+  Any(T),
+  Exactly {
+    iterations: usize,
+    interface: T
+  },
+  AtLeast {
+    iterations: usize,
+    interface: T
+  },
+  AtMost {
+    iterations: usize,
+    interface: T
+  }
+}
 
 
-#[derive(Default)]
-pub struct Lens<Action> {
-  // TODO: The rules should be checked at run-time to ensure that they conform to the lens rules!
-  pub rules: Vec<Rule<Vec<Action>, Vec<Action>>>
+#[derive(Default, Debug)]
+pub struct Lens<A> {
+  pub rules: Vec<Rule<Vec<A>, Vec<A>>>
 }
 
 
 #[inline]
-fn top_of_stack_eq<Action: Clone + PartialEq>(stack: &Vector<Action>, other: &Vec<Action>) -> bool {
+fn top_of_stack_eq<A: Clone + PartialEq>(stack: &Vector<A>, other: &Vec<A>) -> bool {
   if stack.len() < other.len() {
     return false
   }
@@ -44,11 +45,11 @@ fn top_of_stack_eq<Action: Clone + PartialEq>(stack: &Vector<Action>, other: &Ve
   true
 }
 
-impl<Action: Clone + PartialEq> Lens<Action> {
+impl<A: Clone + PartialEq> Lens<A> {
   pub fn new<I1, I2>(rules: impl IntoIterator<Item = Rule<I1, I2>>) -> Self
   where
-    I1: IntoIterator<Item = Action>,
-    I2: IntoIterator<Item = Action>
+    I1: IntoIterator<Item = A>,
+    I2: IntoIterator<Item = A>
   {
     Lens {
       rules: rules.into_iter()
@@ -61,7 +62,7 @@ impl<Action: Clone + PartialEq> Lens<Action> {
     }
   }
 
-  pub fn transduce(&self, stack: Vector<Action>) -> Result<impl Iterator<Item = Vector<Action>> + '_, Vector<Action>> {
+  pub fn transduce(&self, stack: Vector<A>) -> Result<impl Iterator<Item = Vector<A>> + '_, Vector<A>> {
     let ret_stack = stack.clone();
     let mut iter = self.rules.iter()
       .filter_map(move |Rule { from, to }| {

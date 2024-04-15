@@ -2,13 +2,12 @@ mod engine;
 
 
 use std::collections::BinaryHeap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use engine::lens::{Lens, Rule};
 use im_rc::Vector;
 use serde_json;
 
-use engine::label::LabelLayer;
+use engine::Engine;
 use engine::config::Config;
 
 
@@ -19,45 +18,30 @@ enum Test {
 }
 
 
-#[derive(Debug)]
-struct QueueItem<Action: Clone> {
-    id: usize,
+#[derive(PartialEq, Eq, Debug)]
+struct QueueItem<Action: Clone + PartialEq + Eq> {
     level: usize,
     stack: Vector<Action>,
-    last_id: Option<usize>
 }
 
-pub fn new_id() -> usize {
-    static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
-    ID_COUNTER.fetch_add(1, Ordering::Relaxed)
-}
 
-impl<Action: Clone> QueueItem<Action> {
+
+impl<Action: Clone + Eq> QueueItem<Action> {
     pub fn new(stack: impl Into<Vec<Action>>) -> Self {
         QueueItem {
-            id: new_id(),
             level: 0,
             stack: stack.into().into(),
-            last_id: None
         }
     }
 }
 
-impl<Action: Clone> PartialEq for QueueItem<Action> {
-    fn eq(&self, other: &Self) -> bool {
-        self.level == other.level
-    }
-}
-
-impl<Action: Clone> Eq for QueueItem<Action> {}
-
-impl<Action: Clone> PartialOrd for QueueItem<Action> {
+impl<Action: Clone + Eq> PartialOrd for QueueItem<Action> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.level.partial_cmp(&other.level).map(|ord| ord.reverse())
+        Some(self.cmp(other))
     }
 }
 
-impl<Action: Clone> Ord for QueueItem<Action> {
+impl<Action: Clone + Eq> Ord for QueueItem<Action> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.level.cmp(&other.level).reverse()
     }
@@ -65,7 +49,10 @@ impl<Action: Clone> Ord for QueueItem<Action> {
 
 fn main() {
     let config = serde_json::from_str::<Config>(include_str!("../test_config.json")).unwrap();
-    let engine = LabelLayer::from_config(config);
+    let engine = Engine::build_from_config(config);
+
+    let lens = engine.lenses.get(0).unwrap();
+    let lens2 = engine.lenses.get(3).unwrap();
 
     let chains = [
         ["AtoA", "AtoA"],
@@ -79,7 +66,8 @@ fn main() {
     ];
 
     for actions in chains.into_iter() {
-        println!("{:?} -> {:?}", actions, engine.transduce(actions));
+        println!("{:?} -> {:?}", actions, engine.transduce(lens, actions));
+        println!("\t{:?} -> {:?}", actions, engine.transduce(lens2, actions));
     }
 
     let chains = [
@@ -102,7 +90,7 @@ fn main() {
     ];
 
     for actions in chains.into_iter() {
-        println!("{:?} -> {:?}", actions, engine.transduce(actions));
+        println!("{:?} -> {:?}", actions, engine.transduce(lens, actions));
     }
 
 
@@ -125,16 +113,14 @@ fn main() {
     queue.push(QueueItem::new([Test::A, Test::A, Test::A]));
     queue.push(QueueItem::new([Test::A, Test::A, Test::A, Test::A]));
 
-    while let Some(item) = queue.pop() {
-        println!("{:?}", item);
-        let QueueItem { id, level, stack, .. } = item;
+    while let Some(QueueItem { level, stack }) = queue.pop() {
         for lens in lenses.iter() {
             match lens.transduce(stack.clone()) {
                 Ok(iter) =>
                     queue.extend(iter.map(|stack|
-                        QueueItem { id: new_id(), level: level + 1, stack, last_id: Some(id) })
+                        QueueItem { level: level + 1, stack })
                     ),
-                Err(_) => ()
+                Err(stack) => ()
             }
         }
     }
