@@ -67,22 +67,22 @@ impl EntityMap {
 
 
 #[derive(Default)]
-pub struct Engine {
+pub struct Diagram {
   entity_map: EntityMap,
   action_map: HashMap<Entity, Action>,
   pub lenses: Vec<Lens<Action>>
 }
 
-impl Engine {
-  pub fn build_from_config(config: Config) -> Engine {
-    let mut engine = Engine::default();
+impl Diagram {
+  pub fn build_from_config(config: Config) -> Diagram {
+    let mut diagram = Diagram::default();
   
     for InterfaceConfig { states: state_configs, .. } in config.interfaces {
       for StateConfig { label, actions: action_labels } in state_configs {
-        let state_entity = engine.entity_map.insert(label).unwrap();
+        let state_entity = diagram.entity_map.insert(label).unwrap();
         for label in action_labels {
-          let action_entity = engine.entity_map.insert(label).unwrap();
-          engine.action_map.insert(action_entity, Action { action: action_entity, base_state: state_entity });
+          let action_entity = diagram.entity_map.insert(label).unwrap();
+          diagram.action_map.insert(action_entity, Action { action: action_entity, base_state: state_entity });
         }
       }
     }
@@ -91,14 +91,14 @@ impl Engine {
       let mut rules = Vec::new();
       for RuleConfig { from, to } in rule_configs {
         rules.push(Rule {
-          from: engine.actions(from),
-          to: engine.actions(to)
+          from: diagram.actions(from),
+          to: diagram.actions(to)
         });
       }
-      engine.lenses.push(Lens::new(rules));
+      diagram.lenses.push(Lens::new(rules));
     }
   
-    engine
+    diagram
   }
 
   fn actions<'a, S: AsRef<str>>(

@@ -33,6 +33,14 @@ pub struct Lens<A> {
   pub rules: Vec<Rule<Vec<A>, Vec<A>>>
 }
 
+pub struct ArrayLens<A, const N: usize, const M: usize> {
+  pub rules: Vec<Rule<[A; N], [A; M]>>
+}
+
+impl<A: Clone + PartialEq, const N: usize, const M: usize> From<ArrayLens<A, N, M>> for Lens<A> {
+  fn from(value: ArrayLens<A, N, M>) -> Self { Lens::new(value.rules) }
+}
+
 
 #[inline]
 fn top_of_stack_eq<A: Clone + PartialEq>(stack: &Vector<A>, other: &Vec<A>) -> bool {

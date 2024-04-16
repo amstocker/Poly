@@ -1,14 +1,14 @@
-mod engine;
+mod diagram;
 
 
 use std::collections::BinaryHeap;
 
-use engine::lens::{Lens, Rule};
+use diagram::lens::{Lens, Rule};
 use im_rc::Vector;
 use serde_json;
 
-use engine::Engine;
-use engine::config::Config;
+use diagram::Diagram;
+use diagram::config::Config;
 
 
 
@@ -49,10 +49,10 @@ impl<Action: Clone + Eq> Ord for QueueItem<Action> {
 
 fn main() {
     let config = serde_json::from_str::<Config>(include_str!("../test_config.json")).unwrap();
-    let engine = Engine::build_from_config(config);
+    let diagram = Diagram::build_from_config(config);
 
-    let lens = engine.lenses.get(0).unwrap();
-    let lens2 = engine.lenses.get(3).unwrap();
+    let lens = diagram.lenses.get(0).unwrap();
+    let lens2 = diagram.lenses.get(3).unwrap();
 
     let chains = [
         ["AtoA", "AtoA"],
@@ -66,8 +66,8 @@ fn main() {
     ];
 
     for actions in chains.into_iter() {
-        println!("{:?} -> {:?}", actions, engine.transduce(lens, actions));
-        println!("\t{:?} -> {:?}", actions, engine.transduce(lens2, actions));
+        println!("{:?} -> {:?}", actions, diagram.transduce(lens, actions));
+        println!("\t{:?} -> {:?}", actions, diagram.transduce(lens2, actions));
     }
 
     let chains = [
@@ -90,7 +90,7 @@ fn main() {
     ];
 
     for actions in chains.into_iter() {
-        println!("{:?} -> {:?}", actions, engine.transduce(lens, actions));
+        println!("{:?} -> {:?}", actions, diagram.transduce(lens, actions));
     }
 
 
