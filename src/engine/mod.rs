@@ -10,8 +10,8 @@ use self::{config::*, lens::*};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Action {
-  id: Entity,
-  base: Entity
+  action: Entity,
+  base_state: Entity
 }
 
 pub type Entity = usize;
@@ -82,7 +82,7 @@ impl Engine {
         let state_entity = engine.entity_map.insert(label).unwrap();
         for label in action_labels {
           let action_entity = engine.entity_map.insert(label).unwrap();
-          engine.action_map.insert(action_entity, Action { id: action_entity, base: state_entity });
+          engine.action_map.insert(action_entity, Action { action: action_entity, base_state: state_entity });
         }
       }
     }
@@ -105,7 +105,8 @@ impl Engine {
     &'a self,
     labels: impl IntoIterator<Item = S> + 'a
   ) -> impl Iterator<Item = Action> + '_ {
-    self.entity_map.entities(labels)
+    self.entity_map
+      .entities(labels)
       .map(|entity| self.action_map.get(&entity.unwrap()).unwrap())
       .copied()
   }
@@ -114,7 +115,7 @@ impl Engine {
     &'a self, actions: impl IntoIterator<Item = Action> + 'a
   ) -> impl Iterator<Item = String> + 'a {
     self.entity_map
-      .resolve_all(actions.into_iter().map(|action| action.id))
+      .resolve_all(actions.into_iter().map(|action| action.action))
       .map(|s| s.unwrap())
       .cloned()
   }

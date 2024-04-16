@@ -1,3 +1,5 @@
+use std::default;
+
 use im_rc::Vector;
 
 
@@ -8,20 +10,21 @@ pub struct Rule<A, B> {
   pub to: B
 }
 
-pub enum Composition<T> {
-  Any(T),
-  Exactly {
-    iterations: usize,
-    interface: T
-  },
-  AtLeast {
-    iterations: usize,
-    interface: T
-  },
-  AtMost {
-    iterations: usize,
-    interface: T
-  }
+pub enum Iteration {
+  Any,
+  Exactly(usize),
+  AtLeast(usize),
+  AtMost(usize)
+}
+
+impl Default for Iteration {
+  fn default() -> Self { Iteration::Exactly(1) }
+}
+
+#[derive(Default)]
+pub enum Attribute {
+  #[default] Unchecked,
+  Checked(bool)
 }
 
 
