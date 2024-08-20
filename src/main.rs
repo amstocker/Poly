@@ -17,13 +17,11 @@ enum Test {
     A, B, C
 }
 
-
 #[derive(PartialEq, Eq, Debug)]
 struct QueueItem<Action: Clone + PartialEq + Eq> {
     level: usize,
     stack: Vector<Action>,
 }
-
 
 
 impl<Action: Clone + Eq> QueueItem<Action> {
@@ -48,80 +46,96 @@ impl<Action: Clone + Eq> Ord for QueueItem<Action> {
 }
 
 fn main() {
-    let config = serde_json::from_str::<Config>(include_str!("../test_config.json")).unwrap();
-    let diagram = Diagram::build_from_config(config);
+    // let config = serde_json::from_str::<Config>(include_str!("../test_config.json")).unwrap();
+    // let diagram = Diagram::build_from_config(config);
 
-    let lens = diagram.lenses.get(0).unwrap();
-    let lens2 = diagram.lenses.get(3).unwrap();
+    // let lens = diagram.lenses.get(0).unwrap();
+    // let lens2 = diagram.lenses.get(3).unwrap();
 
-    let chains = [
-        ["AtoA", "AtoA"],
-        ["AtoA", "AtoB"],
-        ["AtoB", "BtoA"],
-        ["AtoB", "BtoB"],
-        ["BtoA", "AtoA"],
-        ["BtoA", "AtoB"],
-        ["BtoB", "BtoA"],
-        ["BtoB", "BtoB"]
-    ];
+    // let chains = [
+    //     ["AtoA", "AtoA"],
+    //     ["AtoA", "AtoB"],
+    //     ["AtoB", "BtoA"],
+    //     ["AtoB", "BtoB"],
+    //     ["BtoA", "AtoA"],
+    //     ["BtoA", "AtoB"],
+    //     ["BtoB", "BtoA"],
+    //     ["BtoB", "BtoB"]
+    // ];
 
-    for actions in chains.into_iter() {
-        println!("{:?} -> {:?}", actions, diagram.transduce(lens, actions));
-        println!("\t{:?} -> {:?}", actions, diagram.transduce(lens2, actions));
-    }
+    // for actions in chains.into_iter() {
+    //     println!("{:?} -> {:?}", actions, diagram.transduce(lens, actions));
+    //     println!("\t{:?} -> {:?}", actions, diagram.transduce(lens2, actions));
+    // }
 
-    let chains = [
-        ["AtoA", "AtoA", "AtoA"],
-        ["AtoA", "AtoA", "AtoB"],
-        ["AtoA", "AtoB", "BtoA"],
-        ["AtoA", "AtoB", "BtoB"],
-        ["AtoB", "BtoA", "AtoA"],
-        ["AtoB", "BtoA", "AtoB"],
-        ["AtoB", "BtoB", "BtoA"],
-        ["AtoB", "BtoB", "BtoB"],
-        ["BtoA", "AtoA", "AtoA"],
-        ["BtoA", "AtoA", "AtoB"],
-        ["BtoA", "AtoB", "BtoA"],
-        ["BtoA", "AtoB", "BtoB"],
-        ["BtoB", "BtoA", "AtoA"],
-        ["BtoB", "BtoA", "AtoB"],
-        ["BtoB", "BtoB", "BtoA"],
-        ["BtoB", "BtoB", "BtoB"]
-    ];
+    // let chains = [
+    //     ["AtoA", "AtoA", "AtoA"],
+    //     ["AtoA", "AtoA", "AtoB"],
+    //     ["AtoA", "AtoB", "BtoA"],
+    //     ["AtoA", "AtoB", "BtoB"],
+    //     ["AtoB", "BtoA", "AtoA"],
+    //     ["AtoB", "BtoA", "AtoB"],
+    //     ["AtoB", "BtoB", "BtoA"],
+    //     ["AtoB", "BtoB", "BtoB"],
+    //     ["BtoA", "AtoA", "AtoA"],
+    //     ["BtoA", "AtoA", "AtoB"],
+    //     ["BtoA", "AtoB", "BtoA"],
+    //     ["BtoA", "AtoB", "BtoB"],
+    //     ["BtoB", "BtoA", "AtoA"],
+    //     ["BtoB", "BtoA", "AtoB"],
+    //     ["BtoB", "BtoB", "BtoA"],
+    //     ["BtoB", "BtoB", "BtoB"]
+    // ];
 
-    for actions in chains.into_iter() {
-        println!("{:?} -> {:?}", actions, diagram.transduce(lens, actions));
-    }
+    // for actions in chains.into_iter() {
+    //     println!("{:?} -> {:?}", actions, diagram.transduce(lens, actions));
+    // }
 
 
-    // Testing lenses...
+    // // Testing lenses...
 
-    let lens1 = Lens::new([
-        Rule { from: [Test::A, Test::B], to: [Test::C] },
-        Rule { from: [Test::A, Test::A], to: [Test::B] },
-        Rule { from: [Test::A, Test::C], to: [Test::B] }
-    ]);
+    // let lens1 = Lens::new([
+    //     Rule { from: [Test::A, Test::B], to: [Test::C] },
+    //     Rule { from: [Test::A, Test::A], to: [Test::B] },
+    //     Rule { from: [Test::A, Test::C], to: [Test::B] }
+    // ]);
 
-    let lens2 = Lens::new([
-        Rule { from: [Test::B], to: [Test::C] }
-    ]);
+    // let lens2 = Lens::new([
+    //     Rule { from: [Test::B], to: [Test::C] }
+    // ]);
 
-    let lenses = [lens1, lens2];
+    // let lenses = [lens1, lens2];
 
-    let mut queue = BinaryHeap::default();
+    // let mut queue = BinaryHeap::default();
 
-    queue.push(QueueItem::new([Test::A, Test::A, Test::A]));
-    queue.push(QueueItem::new([Test::A, Test::A, Test::A, Test::A]));
+    // queue.push(QueueItem::new([Test::A, Test::A, Test::A]));
+    // queue.push(QueueItem::new([Test::A, Test::A, Test::A, Test::A]));
 
-    while let Some(QueueItem { level, stack }) = queue.pop() {
-        for lens in lenses.iter() {
-            match lens.transduce(stack.clone()) {
-                Ok(iter) =>
-                    queue.extend(iter.map(|stack|
-                        QueueItem { level: level + 1, stack })
-                    ),
-                Err(stack) => ()
-            }
-        }
-    }
+    // while let Some(QueueItem { level, stack }) = queue.pop() {
+    //     for lens in lenses.iter() {
+    //         match lens.transduce(stack.clone()) {
+    //             Ok(iter) =>
+    //                 queue.extend(iter.map(|stack|
+    //                     QueueItem { level: level + 1, stack })
+    //                 ),
+    //             Err(stack) => ()
+    //         }
+    //     }
+    // }
+
+    use diagram::category::*;
+
+    // f : { 0, 1 } -> { 0, 1, 2 }
+    // f(0) = 2, f(1) = 0
+    let f: Function = [1, 0].into();
+
+    // g : { 0, 1, 2 } -> { 0, 1 }
+    // g(0) = 1, g(1) = 0, g(2) = 1
+    let g: Function = [1, 0, 1].into();
+
+    let (a, b) = f.pullback(&g);
+    println!("{:?}", a);
+    println!("{:?}", b);
+
+
 }

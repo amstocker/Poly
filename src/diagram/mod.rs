@@ -1,5 +1,6 @@
 pub mod lens;
 pub mod config;
+pub mod category;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
