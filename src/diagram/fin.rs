@@ -42,19 +42,7 @@ impl Arrow {
     }
 
     pub fn apply(&self, value: &Value) -> Option<Value> {
-        self.items().find(|(x, _)| x == value).map(|(_, y)| y)
-    }
-
-    pub fn image(&self, value: Value) -> Object {
-        self.items()
-            .filter_map(|(x, y)| if x == value { Some(y) } else { None })
-            .collect()
-    }
-
-    pub fn preimage(&self, value: Value) -> Object {
-        self.items()
-            .filter_map(|(x, y)| if y == value { Some(x) } else { None })
-            .collect()
+        self.0.get(value).copied()
     }
 
     pub fn compose(&self, other: &Arrow) -> Arrow {
@@ -96,9 +84,9 @@ impl Arrow {
 
     pub fn equalize(&self, other: &Arrow) -> Arrow {
         let mut data = HashMap::new();
-        for &x in self.domain().intersection(&other.domain()) {
-            if self.image(x) == other.image(x) {
-                data.insert(x, x);
+        for x in self.domain().intersection(&other.domain()) {
+            if self.apply(x).unwrap() == other.apply(x).unwrap() {
+                data.insert(*x, *x);
             }
         }
         Arrow(data)
@@ -109,10 +97,23 @@ impl Arrow {
         for edge in self.domain().intersection(&other.domain()) {
             let source = self.apply(edge).unwrap();
             let target = other.apply(edge).unwrap();
-            if let Some(component) = components.iter_mut().find(|component| component.contains(&source)) {
-                component.insert(target);
-            } else {
-                components.push([source, target].into());
+            match (
+                components.iter().position(|component| component.contains(&source)),
+                components.iter().position(|component| component.contains(&target))
+            ) {
+                (None, None) => {
+                    components.push([source, target].into());
+                },
+                (Some(i), None) => {
+                    components[i].insert(target);
+                },
+                (None, Some(j)) => {
+                    components[j].insert(source);
+                },
+                (Some(i), Some(j)) => {
+                    components[i].insert(target);
+                    components[j].insert(source);
+                },
             }
         }
         let mut data = HashMap::new();
@@ -127,19 +128,19 @@ impl Arrow {
 
     pub fn pullback(&self, other: &Arrow) -> (Arrow, Arrow) {
         let (p1, p2) = self.product(other);
-        let e = p1.compose(self).equalize(&p2.compose(other));
+        let equalizer = p1.compose(self).equalize(&p2.compose(other));
         (
-            e.compose(&p1),
-            e.compose(&p2)
+            equalizer.compose(&p1),
+            equalizer.compose(&p2)
         )
     }
 
     pub fn pushout(&self, other: &Arrow) -> (Arrow, Arrow) {
         let (i1, i2) = self.coproduct(other);
-        let e = self.compose(&i1).coequalize(&other.compose(&i2));
+        let coequalizer = self.compose(&i1).coequalize(&other.compose(&i2));
         (
-            i1.compose(&e),
-            i2.compose(&e)
+            i1.compose(&coequalizer),
+            i2.compose(&coequalizer)
         )
     }
 }
