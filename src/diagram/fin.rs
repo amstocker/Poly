@@ -62,9 +62,9 @@ impl Arrow {
         let mut data_other = HashMap::new();
         for (x1, _) in self.items() {
             for (x2, _) in other.items() {
-                let i = next_value();
-                data_self.insert(i, x1);
-                data_other.insert(i, x2);
+                let z = next_value();
+                data_self.insert(z, x1);
+                data_other.insert(z, x2);
             }
         }
         (Arrow(data_self), Arrow(data_other))
@@ -93,7 +93,7 @@ impl Arrow {
     }
 
     pub fn coequalize(&self, other: &Arrow) -> Arrow {
-        let mut components: Vec<HashSet<Value>> = Vec::new();
+        let mut components: Vec<Vec<Value>> = Vec::new();
         for edge in self.domain().intersection(&other.domain()) {
             let source = self.apply(edge).unwrap();
             let target = other.apply(edge).unwrap();
@@ -101,26 +101,20 @@ impl Arrow {
                 components.iter().position(|component| component.contains(&source)),
                 components.iter().position(|component| component.contains(&target))
             ) {
-                (None, None) => {
-                    components.push([source, target].into());
-                },
-                (Some(i), None) => {
-                    components[i].insert(target);
-                },
-                (None, Some(j)) => {
-                    components[j].insert(source);
-                },
+                (None, None) => components.push([source, target].into()),
+                (Some(i), None) => components[i].push(target),
+                (None, Some(j)) => components[j].push(source),
                 (Some(i), Some(j)) => {
-                    components[i].insert(target);
-                    components[j].insert(source);
+                    components[i].push(target);
+                    components[j].push(source);
                 },
             }
         }
         let mut data = HashMap::new();
         for component in components {
-            let i = next_value();
+            let z = next_value();
             for vertex in component {
-                data.insert(vertex, i);
+                data.insert(vertex, z);
             }
         }
         Arrow(data)
