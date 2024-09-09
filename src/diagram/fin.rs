@@ -1,6 +1,8 @@
 // Notes:
 //  - Might be good to have some kind of "universe" of objects to ensure no overlap...
 //  - Another goal is to create a way to describe diagrams, and then compute limits and colimits.
+//  - Use a global cache (using lazy-static?) to store binary trees that associate a value to a
+//    more coherent representation of that value.
 use std::{
     collections::{HashMap, HashSet},
     sync::atomic::{AtomicUsize, Ordering}
@@ -93,7 +95,7 @@ impl Arrow {
     }
 
     pub fn coequalize(&self, other: &Arrow) -> Arrow {
-        let mut components: Vec<Vec<Value>> = Vec::new();
+        let mut components: Vec<HashSet<Value>> = Vec::new();
         for edge in self.domain().intersection(&other.domain()) {
             let source = self.apply(edge).unwrap();
             let target = other.apply(edge).unwrap();
@@ -101,12 +103,12 @@ impl Arrow {
                 components.iter().position(|component| component.contains(&source)),
                 components.iter().position(|component| component.contains(&target))
             ) {
-                (None, None) => components.push([source, target].into()),
-                (Some(i), None) => components[i].push(target),
-                (None, Some(j)) => components[j].push(source),
+                (None, None) => { components.push([source, target].into()); },
+                (Some(i), None) => { components[i].insert(target); },
+                (None, Some(j)) => { components[j].insert(source); },
                 (Some(i), Some(j)) => {
-                    components[i].push(target);
-                    components[j].push(source);
+                    components[i].insert(target);
+                    components[j].insert(source);
                 },
             }
         }
