@@ -1,0 +1,15 @@
+interface
+    A { B C },
+    E { F }
+
+interface
+    W { X Y Z }
+
+defer
+    A -> W {
+        B <- X Y
+        C <- Z
+    },
+    E -> W {
+        F <- X Y Z
+    }

@@ -2,7 +2,9 @@
 //  - Might be good to have some kind of "universe" of objects to ensure no overlap...
 //  - Another goal is to create a way to describe diagrams, and then compute limits and colimits.
 //  - Use a global cache (using lazy-static?) to store binary trees that associate a value to a
-//    more coherent representation of that value.
+//      more coherent representation of that value.
+//  - In terms of representations: limits are tuples (or binary trees pre-flattening),
+//      it seems to follow that colimits should be like formal sums...
 use std::{
     collections::{HashMap, HashSet},
     sync::atomic::{AtomicUsize, Ordering}
