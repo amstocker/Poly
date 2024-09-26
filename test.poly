@@ -1,3 +1,6 @@
 interface Test:
     A { B C },
     E { F }
+
+interface Test2:
+    W { X Y Z }

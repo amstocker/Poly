@@ -1,5 +1,5 @@
 use chumsky::prelude::*;
-use text::whitespace;
+use text::{newline, whitespace};
 
 
 pub type Label = String;
@@ -25,26 +25,15 @@ pub struct State<T> {
 pub enum Decl {
     Interface {
         label: Label,
-        states: Vec<State<Label>>,
-        then: Option<Box<Decl>>
+        states: Vec<State<Label>>
     },
     Defer {
         label: Label,
-        transitions: Vec<State<Arrow<Label>>>,
-        then: Option<Box<Decl>>
+        transitions: Vec<State<Arrow<Label>>>
     }
 }
 
-impl Decl {
-    pub fn then(&self) -> Option<&Decl> {
-        match self {
-            Decl::Interface { then, .. } => then.as_deref(),
-            Decl::Defer { then, .. } => then.as_deref(),
-        }
-    }
-}
-
-pub fn parser() -> impl Parser<char, Decl, Error = Simple<char>> {
+pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
     let ident = text::ident().padded();
 
     let actions = ident
@@ -69,9 +58,10 @@ pub fn parser() -> impl Parser<char, Decl, Error = Simple<char>> {
         .then(states.clone())
         .map(|(label, states)| Decl::Interface {
             label,
-            states,
-            then: None
+            states
         });
 
     interface
+        .separated_by(newline().repeated())
+        .then_ignore(end())
 }
