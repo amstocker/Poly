@@ -1,8 +1,10 @@
 use chumsky::prelude::*;
-use text::{newline, whitespace};
+use chumsky::text::{newline, whitespace};
+
 
 
 pub type Label = String;
+
 
 #[derive(Debug)]
 pub struct Arrow<T> {
@@ -10,16 +12,31 @@ pub struct Arrow<T> {
     to: T
 }
 
+
 #[derive(Debug)]
 pub struct Action<T> {
     label: T
 }
+
+impl<T> Action<T> {
+    fn from_parsed(label: T) -> Self {
+        Action { label }
+    }
+}
+
 
 #[derive(Debug)]
 pub struct State<T> {
     label: T,
     actions: Vec<Action<T>>
 }
+
+impl<T> State<T> {
+    fn from_parsed((label, actions): (T, Vec<Action<T>>)) -> Self {
+        State { label, actions }
+    }
+}
+
 
 #[derive(Debug)]
 pub enum Decl {
@@ -33,6 +50,7 @@ pub enum Decl {
     }
 }
 
+
 pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
     let ident = text::ident().padded();
 
@@ -40,7 +58,7 @@ pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
         .separated_by(whitespace())
         .delimited_by(just('{'), just('}'))
         .map(|actions| actions.into_iter()
-            .map(|label| Action { label })
+            .map(Action::from_parsed)
             .collect()
         );
 
@@ -48,7 +66,7 @@ pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
         .then(actions.clone())
         .separated_by(just(','))
         .map(|states| states.into_iter()
-            .map(|(label, actions)| State { label, actions })
+            .map(State::from_parsed)
             .collect()
         );
 
