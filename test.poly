@@ -1,6 +1,19 @@
 interface Test:
-    A { B C },
-    E { F }
+    A {
+        B,
+        C
+    },
+    E {
+        F
+    }
 
 interface Test2:
-    W { X Y Z }
+    W { X, Y, Z }
+
+defer Test -> Test2:
+    A -> W {
+        B <- X | Y,
+        C <- Z
+    },
+    E -> W { F <- X | Y | Z }
+
