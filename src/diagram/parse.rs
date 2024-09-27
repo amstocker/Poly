@@ -1,7 +1,5 @@
-use ariadne::{Color, Label, Report, ReportKind, Source};
-use chumsky::error::SimpleReason;
 use chumsky::prelude::*;
-use chumsky::text::{newline, whitespace};
+use chumsky::text::whitespace;
 
 
 #[derive(Debug)]
@@ -161,24 +159,6 @@ pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
         .then_ignore(end())
 }
 
-pub fn parse(src: String) -> Option<Vec<Decl>> {
-    match parser().parse(src.clone()) {
-        Ok(decls) => Some(decls),
-        Err(errs) => {
-            for err in errs {
-                Report::build(ReportKind::Error, (), err.span().start)
-                    .with_code(3)
-                    .with_message(err.to_string())
-                    .with_label(
-                        Label::new(err.span())
-                            .with_message(format!("{:?}", err))
-                            .with_color(Color::Red),
-                    )
-                    .finish()
-                    .eprint(Source::from(src.clone()))
-                    .unwrap();
-            }
-            None
-        }
-    }
+pub fn parse(src: String) -> Result<Vec<Decl>, Vec<Simple<char>>> {
+    parser().parse(src.clone())
 }
