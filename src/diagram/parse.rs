@@ -2,21 +2,15 @@ use chumsky::prelude::*;
 use chumsky::text::whitespace;
 
 
-#[derive(Debug)]
-pub struct Arrow {
-    from: String,
-    to: String
+#[derive(Debug, Clone, Copy)]
+pub enum Direction {
+    Forward,
+    Backward
 }
 
 #[derive(Debug)]
 pub struct Action {
     label: String
-}
-
-impl From<String> for Action {
-    fn from(label: String) -> Self {
-        Action { label }
-    }
 }
 
 #[derive(Debug)]
@@ -25,22 +19,10 @@ pub struct State {
     actions: Vec<Action>
 }
 
-impl From<(String, Vec<Action>)> for State {
-    fn from((label, actions): (String, Vec<Action>)) -> Self {
-        State { label, actions }
-    }
-}
-
 #[derive(Debug)]
 pub struct ActionTransform {
     from: Vec<String>,
     to: String
-}
-
-impl From<(String, Vec<String>)> for ActionTransform {
-    fn from((to, from): (String, Vec<String>)) -> Self {
-        ActionTransform { from, to }
-    }
 }
 
 #[derive(Debug)]
@@ -48,12 +30,6 @@ pub struct StateTransform {
     from: String,
     to: String,
     transforms: Vec<ActionTransform>
-}
-
-impl From<((String, String), Vec<ActionTransform>)> for StateTransform {
-    fn from(((from, to), transforms): ((String, String), Vec<ActionTransform>)) -> Self {
-        StateTransform { from, to, transforms }
-    }
 }
 
 #[derive(Debug)]
@@ -72,11 +48,30 @@ pub enum Decl {
 }
 
 
-#[derive(Debug, Clone, Copy)]
-pub enum Direction {
-    Forward,
-    Backward
+impl From<String> for Action {
+    fn from(label: String) -> Self {
+        Action { label }
+    }
 }
+
+impl From<(String, Vec<Action>)> for State {
+    fn from((label, actions): (String, Vec<Action>)) -> Self {
+        State { label, actions }
+    }
+}
+
+impl From<(String, Vec<String>)> for ActionTransform {
+    fn from((to, from): (String, Vec<String>)) -> Self {
+        ActionTransform { from, to }
+    }
+}
+
+impl From<((String, String), Vec<ActionTransform>)> for StateTransform {
+    fn from(((from, to), transforms): ((String, String), Vec<ActionTransform>)) -> Self {
+        StateTransform { from, to, transforms }
+    }
+}
+
 
 fn arrow(direction: Direction) -> impl Parser<char, &'static str, Error = Simple<char>> {
     use Direction::*;
@@ -155,7 +150,7 @@ fn defer() -> impl Parser<char, Decl, Error = Simple<char>> {
 pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
     interface().or(defer())
         .separated_by(whitespace())
-        .then_ignore(whitespace())
+        .padded()
         .then_ignore(end())
 }
 

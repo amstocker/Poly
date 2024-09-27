@@ -1,4 +1,3 @@
-
 interface Test:
     A { B, C },
     E {
@@ -17,3 +16,7 @@ defer Test -> Test2:
     },
     E -> W { F <- X | Y | Z }
 
+context Page:
+    <Container>
+        
+    </Container>
