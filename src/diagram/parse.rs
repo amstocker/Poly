@@ -1,4 +1,5 @@
 use ariadne::{Color, Label, Report, ReportKind, Source};
+use chumsky::error::SimpleReason;
 use chumsky::prelude::*;
 use chumsky::text::{newline, whitespace};
 
@@ -57,8 +58,6 @@ impl From<((String, String), Vec<ActionTransform>)> for StateTransform {
     }
 }
 
-
-
 #[derive(Debug)]
 pub enum Decl {
     Interface {
@@ -74,6 +73,7 @@ pub enum Decl {
     // Context/focus?
 }
 
+
 #[derive(Debug, Clone, Copy)]
 pub enum Direction {
     Forward,
@@ -88,7 +88,7 @@ fn arrow(direction: Direction) -> impl Parser<char, &'static str, Error = Simple
     })
 }
 
-pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
+fn interface() -> impl Parser<char, Decl, Error = Simple<char>> {
     let ident = text::ident().padded();
 
     let actions = ident
@@ -107,7 +107,7 @@ pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
             .collect()
         );
 
-    let interface = text::keyword("interface")
+    text::keyword("interface")
         .ignore_then(ident)
         .then_ignore(just(':'))
         .then(states)
@@ -115,11 +115,14 @@ pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
         .map(|(label, states)| Decl::Interface {
             label,
             states
-        });
+        })
+}
 
-    use Direction::*;
+fn defer() -> impl Parser<char, Decl, Error = Simple<char>> {
+    let ident = text::ident().padded();
+
     let action_transforms = ident
-        .then_ignore(arrow(Backward))
+        .then_ignore(arrow(Direction::Backward))
         .then(ident.separated_by(just('|')))
         .separated_by(just(','))
         .delimited_by(just('{'), just('}'))
@@ -129,7 +132,7 @@ pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
         );
 
     let state_transforms = ident
-        .then_ignore(arrow(Forward))
+        .then_ignore(arrow(Direction::Forward))
         .then(ident)
         .then(action_transforms)
         .separated_by(just(','))
@@ -138,9 +141,9 @@ pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
             .collect()
         );
 
-    let defer = text::keyword("defer")
+    text::keyword("defer")
         .ignore_then(ident)
-        .then_ignore(arrow(Forward))
+        .then_ignore(arrow(Direction::Forward))
         .then(ident)
         .then_ignore(just(':'))
         .then(state_transforms)
@@ -148,9 +151,11 @@ pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
             from,
             to,
             transforms
-        });
+        })
+}
 
-    interface.or(defer)
+pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
+    interface().or(defer())
         .separated_by(whitespace())
         .then_ignore(whitespace())
         .then_ignore(end())

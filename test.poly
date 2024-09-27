@@ -1,14 +1,13 @@
 interface Test:
-    A {
-        B,
-        C
-    },
+    A { B, C },
     E {
         F
     }
 
 interface Test2:
-    W { X, Y, Z }
+    W { X,
+        Y, Z
+    }
 
 defer Test -> Test2:
     A -> W {
