@@ -1,0 +1,45 @@
+// Should disallow the double-arrow syntax for user interface defs
+// Should just be special syntax reserved for state machine transitions.
+interface State
+    { (A => A), (A => B) },
+    { (B => A), (B => B) }
+
+interface !
+    { ! }
+
+defer State -> !
+    (A => A) <- !, (B => B) <- !
+
+defer State -> (State -> State):
+    (A => A) <- (A => A) -> (A => A) |
+                (A => B) -> (B => A),
+    (A => B) <- (A => A) -> (A => B) |
+                (A => B) -> (B => B),
+    (B => A) <- (B => A) -> (A => A) |
+                (B => B) -> (B => A),
+    (B => B) <- (B => A) -> (A => B) |
+                (B => B) -> (B => B)
+    
+// Naming states is optional.
+// Actions within states can overlap within an interface def.
+interface Word
+    X { 0, 1 }, Y { 0 }
+
+defer State -> Word:
+    A -> X {
+        (A => A) <- 0,
+        (A => B) <- 1
+    },
+    B -> Y {
+        (B => A) <- 0
+    }
+
+interface Component
+    Box { [Thing] },  // [Thing] is syntax for a List i.e. arbitrary arity?
+    Button
+
+defer State -> Component
+    A -> Button,
+    B -> Box {
+        // what to do with [Thing]?  Might not be able to support deferring _to_ arbitrary arity interfaces?
+    }

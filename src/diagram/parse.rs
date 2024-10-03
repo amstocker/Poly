@@ -1,5 +1,5 @@
 use chumsky::prelude::*;
-use chumsky::text::whitespace;
+use chumsky::text::newline;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -149,7 +149,7 @@ fn defer() -> impl Parser<char, Decl, Error = Simple<char>> {
 
 pub fn parser() -> impl Parser<char, Vec<Decl>, Error = Simple<char>> {
     interface().or(defer())
-        .separated_by(whitespace())
+        .separated_by(newline().repeated())
         .padded()
         .then_ignore(end())
 }
