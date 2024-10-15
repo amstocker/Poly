@@ -2,41 +2,43 @@ use std::ops::{Add, Mul};
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Action<T>(T);
+pub struct Action<T>(pub T);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Sequence<T>(Vec<Action<T>>);
+pub struct Sequence<T>(pub Vec<Action<T>>);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Arrow<T>(Vec<Sequence<T>>);
+pub struct Parallel<T>(pub Vec<Sequence<T>>);
+
+pub struct Unit;
 
 
-impl<T: Ord> Arrow<T> {
-    pub fn action(t: T) -> Arrow<T> {
+impl<T: Ord> Action<T> {
+    pub fn new(t: T) -> Parallel<T> {
         Self::sequence([Action(t)])
     }
 
-    pub fn sequence<I: IntoIterator<Item = Action<T>>>(data: I) -> Arrow<T> {
+    pub fn sequence<I: IntoIterator<Item = Action<T>>>(data: I) -> Parallel<T> {
         Self::parallel([Sequence(data.into_iter().collect())])
     }
 
-    pub fn parallel<I: IntoIterator<Item = Sequence<T>>>(data: I) -> Arrow<T> {
+    pub fn parallel<I: IntoIterator<Item = Sequence<T>>>(data: I) -> Parallel<T> {
         let mut data: Vec<Sequence<T>> = data.into_iter().collect();
         data.sort();
-        Arrow(data)
+        Parallel(data)
     }
 }
 
-impl<T> Add for Arrow<T> where T: Ord {
-    type Output = Arrow<T>;
+impl<T> Add for Parallel<T> where T: Ord {
+    type Output = Parallel<T>;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Arrow::parallel(self.0.into_iter().chain(rhs.0.into_iter()))
+        Action::parallel(self.0.into_iter().chain(rhs.0.into_iter()))
     }
 }
 
-impl<T> Mul for Arrow<T> where T: Ord + Clone {
-    type Output = Arrow<T>;
+impl<T> Mul for Parallel<T> where T: Ord + Clone {
+    type Output = Parallel<T>;
 
     fn mul(self, rhs: Self) -> Self::Output {
         let mut data = Vec::new();
@@ -47,6 +49,6 @@ impl<T> Mul for Arrow<T> where T: Ord + Clone {
                 data.push(Sequence(seq));
             }
         }
-        Arrow::parallel(data)
+        Action::parallel(data)
     }
 }

@@ -1,7 +1,8 @@
 use std::ops::{Add, Mul};
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Atom<T>(T);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -10,8 +11,16 @@ pub struct Product<T>(Vec<Atom<T>>);
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Object<T>(Vec<Product<T>>);
 
+pub struct Zero;
+
+pub struct Unit;
+
 
 impl<T: Ord> Object<T> {
+    pub fn zero() -> Object<T> {
+        Object(Vec::new())
+    }
+
     pub fn atom(t: T) -> Object<T> {
         Self::product([Atom(t)])
     }

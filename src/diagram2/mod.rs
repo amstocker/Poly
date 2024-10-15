@@ -1,26 +1,54 @@
 pub mod object;
-pub mod arrow;
+pub mod action;
 
 
-use object::*;
-use arrow::*;
+pub use object::*;
+pub use action::*;
+
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Arrow<T> {
+    pub source: Object<T>,
+    pub target: Object<T>
+}
+
+impl<T> Sequence<Arrow<T>> {
+    pub fn source(&self) -> Object<T> {
+
+    }
+
+    pub fn target(&self) -> Object<T> {
+        // actually want to fold..., but need "zero" and "unit" object/arrow...
+        self.0.iter().reduce(|x, y| x.0.source * y.0.source)
+    }
+}
+
+impl<T> Parallel<Arrow<T>> {
+    pub fn source(&self) -> Object<T> {
+        self.0.iter().reduce(|x, y| )
+    }
+
+    pub fn target(&self) -> Object<T> {
+        
+    }
+}
 
 
 pub struct Monad<T> {
     object: Object<T>,
-    mult: Arrow<T>,
-    unit: Arrow<T>
+    mult: Parallel<T>,
+    unit: Parallel<T>
 }
 
 pub struct Comonad<T> {
     object: Object<T>,
-    comult: Arrow<T>,
-    counit: Arrow<T>
+    comult: Parallel<T>,
+    counit: Parallel<T>
 }
 
 pub struct Engine<T> {
     objects:  Vec<Object<T>>,
-    arrows:   Vec<Arrow<T>>,
+    arrows:   Vec<Parallel<T>>,
     monads:   Vec<Monad<T>>,
     comonads: Vec<Comonad<T>>
     
@@ -31,13 +59,13 @@ pub struct Engine<T> {
 
 pub struct QueryResult<'engine, T> {
     engine: &'engine Engine<T>,
-    existential: Arrow<T>,
-    stack: Vec<Arrow<T>>,
+    existential: Parallel<T>,
+    stack: Vec<Parallel<T>>,
     history: ()
 }
 
 impl<'engine, T> QueryResult<'engine, T> {
-    pub fn new(engine: &'engine Engine<T>, existential: Arrow<T>) -> QueryResult<T> {
+    pub fn new(engine: &'engine Engine<T>, existential: Parallel<T>) -> QueryResult<T> {
         QueryResult {
             engine,
             existential,
@@ -48,7 +76,7 @@ impl<'engine, T> QueryResult<'engine, T> {
 }
 
 impl<'engine, T> Iterator for QueryResult<'engine, T> {
-    type Item = Arrow<T>;
+    type Item = Parallel<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // Implement a breadth-first search on Arrows, constructing new Arrows once a match has been found.
