@@ -1,5 +1,5 @@
 mod diagram;
-
+mod diagram2;
 
 fn main() {
     use diagram::parse::*;

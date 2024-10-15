@@ -1,16 +1,17 @@
 // Should disallow the double-arrow syntax for user interface defs
 // Should just be special syntax reserved for state machine transitions.
 interface State
-    { (A => A), (A => B) },
-    { (B => A), (B => B) }
+    A { A => A, A => B },
+    B { B => A, B => B }
 
 interface !
-    { ! }
+    ! { ! }
 
 defer State -> !
-    (A => A) <- !, (B => B) <- !
+    A => A <- !,
+    B => B <- !
 
-defer State -> (State -> State):
+defer State -> State[2]:
     (A => A) <- (A => A) -> (A => A) |
                 (A => B) -> (B => A),
     (A => B) <- (A => A) -> (A => B) |
@@ -19,6 +20,17 @@ defer State -> (State -> State):
                 (B => B) -> (B => A),
     (B => B) <- (B => A) -> (A => B) |
                 (B => B) -> (B => B)
+
+    A -> A {
+        A => A: A {
+            A => A <- [A => A, A => A],
+            A => B <- [A => A, A => B] 
+        },
+        A => B: B {
+            A => A <- [A => B, B => A],
+            A => B <- [A => B, B => B]
+        }
+    }
     
 // Naming states is optional.
 // Actions within states can overlap within an interface def.
