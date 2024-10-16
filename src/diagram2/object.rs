@@ -9,6 +9,12 @@ pub enum Atom<T> {
     Zero
 }
 
+impl<T> From<T> for Atom<T> {
+    fn from(value: T) -> Self {
+        Atom::Value(value)
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Product<T> {
@@ -19,6 +25,23 @@ impl<T> From<Atom<T>> for Product<T> {
     fn from(atom: Atom<T>) -> Self {
         Product {
             data: [atom].into()
+        }
+    }
+}
+
+impl<T> From<T> for Product<T> {
+    fn from(value: T) -> Self {
+        let atom: Atom<T> = value.into();
+        atom.into()
+    }
+}
+
+impl<T: Ord> Product<T> {
+    pub fn new<I: IntoIterator<Item = Atom<T>>>(data: I) -> Product<T> {
+        let mut data: Vec<Atom<T>> = data.into_iter().collect();
+        data.sort();
+        Product {
+            data
         }
     }
 }
@@ -44,12 +67,36 @@ impl<T> From<Atom<T>> for Sum<T> {
     }
 }
 
+impl<T> From<T> for Sum<T> {
+    fn from(value: T) -> Self {
+        let atom: Atom<T> = value.into();
+        atom.into()
+    }
+}
+
+impl<T: Ord> Sum<T> {
+    pub fn new<I: IntoIterator<Item = Product<T>>>(data: I) -> Sum<T> {
+        let mut data: Vec<Product<T>> = data.into_iter().collect();
+        data.sort();
+        Sum {
+            data
+        }
+    }
+}
+
 
 #[derive(Debug)]
 pub enum Object<T> {
     Atom(Atom<T>),
     Product(Product<T>),
     Sum(Sum<T>)
+}
+
+impl<T> From<T> for Object<T> {
+    fn from(value: T) -> Self {
+        let atom: Atom<T> = value.into();
+        atom.into()
+    }
 }
 
 impl<T> From<Atom<T>> for Object<T> {
@@ -70,36 +117,6 @@ impl<T> From<Sum<T>> for Object<T> {
     }
 }
 
-impl<T: Ord> Object<T> {
-    pub fn unit() -> Object<T> {
-        Atom::Unit.into()
-    }
-
-    pub fn zero() -> Object<T> {
-        Atom::Zero.into()
-    }
-
-    pub fn atom(t: T) -> Object<T> {
-        Atom::Value(t).into()
-    }
-
-    pub fn product<I: IntoIterator<Item = Atom<T>>>(data: I) -> Object<T> {
-        let mut data: Vec<Atom<T>> = data.into_iter().collect();
-        data.sort();
-        Product {
-            data
-        }.into()
-    }
-
-    pub fn sum<I: IntoIterator<Item = Product<T>>>(data: I) -> Object<T> {
-        let mut data: Vec<Product<T>> = data.into_iter().collect();
-        data.sort();
-        Sum {
-            data
-        }.into()
-    }
-}
-
 
 impl<T> Add for Object<T> where T: Ord {
     type Output = Object<T>;
@@ -107,17 +124,15 @@ impl<T> Add for Object<T> where T: Ord {
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (Object::Atom(left), Object::Atom(right)) => match (left, right) {
-                (Atom::Zero, atom) | (atom, Atom::Zero) => {
-                    Object::Atom(atom)
-                },
+                (Atom::Zero, atom) | (atom, Atom::Zero) => atom.into(),
                 (left, right) => {
-                    Object::sum([left.into(), right.into()])
+                    Sum::new([left.into(), right.into()]).into()
                 }
             },
             (Object::Atom(atom), Object::Product(product)) |
             (Object::Product(product), Object::Atom(atom)) => match atom {
                 Atom::Zero => product.into(),
-                atom => Object::sum([product, atom.into()])
+                atom => Sum::new([product, atom.into()]).into()
             },
             (Object::Atom(atom), Object::Sum(sum)) |
             (Object::Sum(sum), Object::Atom(atom)) => match atom {
@@ -125,41 +140,75 @@ impl<T> Add for Object<T> where T: Ord {
                 atom => {
                     let mut data = sum.data;
                     data.push(atom.into());
-                    Object::sum(data)
+                    Sum::new(data).into()
                 }
             },
             (Object::Product(product), Object::Sum(sum)) |
             (Object::Sum(sum), Object::Product(product)) => {
                 let mut data = sum.data;
                 data.push(product);
-                Object::sum(data)
+                Sum::new(data).into()
             },
             (Object::Product(left), Object::Product(right)) => {
-                Object::sum([left, right])
+                Sum::new([left, right]).into()
             },
             (Object::Sum(left), Object::Sum(mut right)) => {
                 let mut data = left.data;
                 data.append(&mut right.data);
-                Object::sum(data)
+                Sum::new(data).into()
             },
         }
     }
 }
-
 
 impl<T> Mul for Object<T> where T: Ord + Clone {
     type Output = Object<T>;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        let mut data = Vec::new();
-        for Product(first_seq) in &self.0 {
-            for Product(second_seq) in &rhs.0 {
-                let mut seq = first_seq.clone();
-                seq.append(&mut second_seq.clone());
-                seq.sort();
-                data.push(Product(seq));
-            }
+        match (self, rhs) {
+            (Object::Atom(atom), obj) | (obj, Object::Atom(atom)) => match atom {
+                Atom::Unit => obj,
+                Atom::Zero => Atom::Zero.into(),
+                atom => match obj {
+                    Object::Atom(other) => Product::new([atom, other]).into(),
+                    Object::Product(product) => {
+                        let mut data = product.data;
+                        data.push(atom);
+                        Product::new(data).into()
+                    },
+                    Object::Sum(sum) => {
+                        let mut data = sum.data;
+                        for product in &mut data {
+                            let data = &mut product.data;
+                            data.push(atom.clone());
+                            *product = Product::new(data.iter().cloned());
+                        }
+                        Sum::new(data).into()
+                    },
+                }
+            },
+            (Object::Product(product), Object::Product(product)) => todo!(),
+            (Object::Product(product), Object::Sum(sum)) => todo!(),
+            (Object::Sum(sum), Object::Product(product)) => todo!(),
+            (Object::Sum(sum), Object::Sum(sum)) => todo!(),
         }
-        Object::sum(data)
     }
 }
+
+
+//impl<T> Mul for Object<T> where T: Ord + Clone {
+//    type Output = Object<T>;
+//
+//    fn mul(self, rhs: Self) -> Self::Output {
+//        let mut data = Vec::new();
+//        for Product(first_seq) in &self.0 {
+//            for Product(second_seq) in &rhs.0 {
+//                let mut seq = first_seq.clone();
+//                seq.append(&mut second_seq.clone());
+//                seq.sort();
+//                data.push(Product(seq));
+//            }
+//        }
+//        Sum::new(data)
+//    }
+//}
