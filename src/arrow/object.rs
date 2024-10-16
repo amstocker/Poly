@@ -116,7 +116,7 @@ impl<T: std::fmt::Display> std::fmt::Display for Sum<T> {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Object<T> {
     Atom(Atom<T>),
     Product(Product<T>),
