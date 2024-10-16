@@ -13,10 +13,13 @@ fn main() {
     let y: Object<char> = Atom::Value('Y').into();
     let z: Object<char> = Atom::Value('Z').into();
 
-    println!("{:?}", x.clone() * y.clone() * x.clone());
-    println!("{:?}", y.clone() + x.clone() + y.clone() * z.clone());
-    println!("{:?}", (z.clone() + y.clone()) * x.clone());
-    println!("{:?}", x.clone() * (z.clone() + y.clone()));
+    //println!("{:?}", x.clone() * y.clone() * x.clone());
+    //println!("{:?}", y.clone() + x.clone() + y.clone() * z.clone());
+    //println!("{:?}", (z.clone() + y.clone()) * x.clone());
+    //println!("{:?}", x.clone() * (z.clone() + y.clone()));
+    println!("\t{:?}", Object::unit() * x.clone());
+    println!("\t{:?}", x.clone() * Object::zero());
+
 
     // let f = Action::new(Arrow { source: x.clone(), target: y.clone() });
     // let g = Action::new(Arrow { source: x.clone(), target: z.clone() });

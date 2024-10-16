@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul};
+use std::{fmt::Debug, ops::{Add, Mul}};
 
 
 
@@ -92,6 +92,16 @@ pub enum Object<T> {
     Sum(Sum<T>)
 }
 
+impl<T> Object<T> {
+    pub fn zero() -> Object<T> {
+        Self::Atom(Atom::Zero)
+    }
+
+    pub fn unit() -> Object<T> {
+        Self::Atom(Atom::Unit)
+    }
+}
+
 impl<T> From<T> for Object<T> {
     fn from(value: T) -> Self {
         let atom: Atom<T> = value.into();
@@ -161,32 +171,32 @@ impl<T> Add for Object<T> where T: Ord {
     }
 }
 
-impl<T> Mul for Object<T> where T: Ord + Clone {
+impl<T: Debug> Mul for Object<T> where T: Ord + Clone {
     type Output = Object<T>;
 
     fn mul(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
-            (Object::Atom(atom), obj) | (obj, Object::Atom(atom)) => match atom {
-                Atom::Unit => obj,
-                Atom::Zero => Atom::Zero.into(),
-                atom => match obj {
-                    Object::Atom(other) => Product::new([atom, other]).into(),
-                    Object::Product(product) => {
-                        let mut data = product.data;
-                        data.push(atom);
-                        Product::new(data).into()
-                    },
-                    Object::Sum(sum) => {
-                        let mut data = sum.data;
-                        for product in &mut data {
-                            let data = &mut product.data;
-                            data.push(atom.clone());
-                            *product = Product::new(data.iter().cloned());
-                        }
-                        Sum::new(data).into()
-                    },
-                }
+            (Object::Atom(left), Object::Atom(right)) => match (left, right) {
+                (Atom::Zero, _) | (_, Atom::Zero) => Atom::Zero.into(),
+                (Atom::Unit, atom) | (atom, Atom::Unit) => atom.into(),
+                (left, right) => Product::new([left, right]).into(),
             },
+            (Object::Atom(atom), Object::Product(product)) |
+            (Object::Product(product), Object::Atom(atom)) => {
+                let mut data = product.data;
+                data.push(atom);
+                Product::new(data).into() 
+            },
+            (Object::Atom(atom), Object::Sum(sum)) |
+            (Object::Sum(sum), Object::Atom(atom)) => {
+                let mut data = sum.data;
+                for product in &mut data {
+                    let data = &mut product.data;
+                    data.push(atom.clone());
+                    *product = Product::new(data.iter().cloned());
+                }
+                Sum::new(data).into()
+            }
             (Object::Product(left), Object::Product(mut right)) => {
                 let mut data = left.data;
                 data.append(&mut right.data);
