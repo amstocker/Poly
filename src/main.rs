@@ -18,11 +18,11 @@ fn main() {
     println!("{}", x.clone() * Object::zero());
 
 
-    // let f = Action::new(Arrow { source: x.clone(), target: y.clone() });
-    // let g = Action::new(Arrow { source: x.clone(), target: z.clone() });
-    // let h = Action::new(Arrow { source: y.clone(), target: z.clone() });
+    let f: Action<char> = Operation::Value('f').into();
+    let g: Action<char> = Operation::Value('g').into();
+    let h: Action<char> = Operation::Value('h').into();
 
-    // println!("{:?}", h.clone() + f.clone());
-    // println!("{:?}", f.clone() * g.clone());
-    // println!("{:?}", g.clone() * (f.clone() + h.clone()));
+    println!("{}", h.clone() + f.clone());
+    println!("{}", f.clone() * g.clone());
+    println!("{}", g.clone() * (f.clone() + h.clone()));
 }
