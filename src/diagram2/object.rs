@@ -85,7 +85,7 @@ impl<T: Ord> Sum<T> {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Object<T> {
     Atom(Atom<T>),
     Product(Product<T>),
@@ -187,28 +187,31 @@ impl<T> Mul for Object<T> where T: Ord + Clone {
                     },
                 }
             },
-            (Object::Product(product), Object::Product(product)) => todo!(),
-            (Object::Product(product), Object::Sum(sum)) => todo!(),
-            (Object::Sum(sum), Object::Product(product)) => todo!(),
-            (Object::Sum(sum), Object::Sum(sum)) => todo!(),
+            (Object::Product(left), Object::Product(mut right)) => {
+                let mut data = left.data;
+                data.append(&mut right.data);
+                Product::new(data).into()
+            },
+            (Object::Product(other_product), Object::Sum(sum)) |
+            (Object::Sum(sum), Object::Product(other_product)) => {
+                let mut data = sum.data;
+                for product in &mut data {
+                    let data = &mut product.data;
+                    data.append(&mut other_product.data.clone());
+                }
+                Sum::new(data).into()
+            },
+            (Object::Sum(left), Object::Sum(right)) => {
+                let mut data = Vec::new();
+                for left_product in &left.data {
+                    for right_product in &right.data {
+                        let mut left_data = left_product.data.clone();
+                        left_data.append(&mut right_product.data.clone());
+                        data.push(Product::new(left_data));
+                    }
+                }
+                Sum::new(data).into()
+            },
         }
     }
 }
-
-
-//impl<T> Mul for Object<T> where T: Ord + Clone {
-//    type Output = Object<T>;
-//
-//    fn mul(self, rhs: Self) -> Self::Output {
-//        let mut data = Vec::new();
-//        for Product(first_seq) in &self.0 {
-//            for Product(second_seq) in &rhs.0 {
-//                let mut seq = first_seq.clone();
-//                seq.append(&mut second_seq.clone());
-//                seq.sort();
-//                data.push(Product(seq));
-//            }
-//        }
-//        Sum::new(data)
-//    }
-//}
