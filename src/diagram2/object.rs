@@ -1,8 +1,7 @@
-use std::{fmt::Debug, ops::{Add, Mul}};
 
 
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Atom<T> {
     Value(T),
     Unit,
@@ -15,8 +14,18 @@ impl<T> From<T> for Atom<T> {
     }
 }
 
+impl<T: std::fmt::Display> std::fmt::Display for Atom<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Atom::Value(value) => write!(f, "{}", value),
+            Atom::Unit => write!(f, "Unit"),
+            Atom::Zero => write!(f, "Zero"),
+        }
+    }
+}
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Product<T> {
     pub data: Vec<Atom<T>>
 }
@@ -46,8 +55,21 @@ impl<T: Ord> Product<T> {
     }
 }
 
+impl<T: std::fmt::Display> std::fmt::Display for Product<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.data.len() == 1 {
+            write!(f, "{}", self.data[0].to_string())
+        } else {
+            write!(f, "({})", self.data.iter()
+                .map(|atom| atom.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")) 
+        }
+    }
+}
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Sum<T> {
     pub data: Vec<Product<T>>
 }
@@ -84,8 +106,17 @@ impl<T: Ord> Sum<T> {
     }
 }
 
+impl<T: std::fmt::Display> std::fmt::Display for Sum<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.data.iter()
+            .map(|prod| prod.to_string())
+            .collect::<Vec<_>>()
+            .join(" + "))
+    }
+}
 
-#[derive(Debug, Clone)]
+
+#[derive(Clone)]
 pub enum Object<T> {
     Atom(Atom<T>),
     Product(Product<T>),
@@ -127,8 +158,18 @@ impl<T> From<Sum<T>> for Object<T> {
     }
 }
 
+impl<T: std::fmt::Display> std::fmt::Display for Object<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Object::Atom(atom) => atom.fmt(f),
+            Object::Product(product) => product.fmt(f),
+            Object::Sum(sum) => sum.fmt(f),
+        }
+    }
+}
 
-impl<T> Add for Object<T> where T: Ord {
+
+impl<T> std::ops::Add for Object<T> where T: Ord {
     type Output = Object<T>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -153,14 +194,14 @@ impl<T> Add for Object<T> where T: Ord {
                     Sum::new(data).into()
                 }
             },
+            (Object::Product(left), Object::Product(right)) => {
+                Sum::new([left, right]).into()
+            },
             (Object::Product(product), Object::Sum(sum)) |
             (Object::Sum(sum), Object::Product(product)) => {
                 let mut data = sum.data;
                 data.push(product);
                 Sum::new(data).into()
-            },
-            (Object::Product(left), Object::Product(right)) => {
-                Sum::new([left, right]).into()
             },
             (Object::Sum(left), Object::Sum(mut right)) => {
                 let mut data = left.data;
@@ -171,7 +212,7 @@ impl<T> Add for Object<T> where T: Ord {
     }
 }
 
-impl<T: Debug> Mul for Object<T> where T: Ord + Clone {
+impl<T> std::ops::Mul for Object<T> where T: Ord + Clone {
     type Output = Object<T>;
 
     fn mul(self, rhs: Self) -> Self::Output {
