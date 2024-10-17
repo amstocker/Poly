@@ -1,9 +1,11 @@
-pub mod object;
 pub mod action;
+pub mod object;
+pub mod query;
 
-
-pub use object::*;
 pub use action::*;
+pub use object::*;
+pub use query::*;
+
 
 
 pub trait Arrow<T> {
@@ -61,17 +63,17 @@ impl<T: Eq, A> Arrow<T> for Sequence<A> where A: Arrow<T> {
     }
 }
 
-impl<T: Eq + Ord, A> Arrow<T> for Parallel<A> where A: Arrow<T> {
+impl<T: Eq + Ord + Clone, A> Arrow<T> for Parallel<A> where A: Arrow<T> {
     fn source(&self) -> Object<T> {
-        self.data.iter().fold(Object::zero(), |sum, seq| sum + seq.source())
+        self.data.iter().fold(Object::unit(), |prod, seq| prod * seq.source())
     }
 
     fn target(&self) -> Object<T> {
-        self.data.iter().fold(Object::zero(), |sum, seq| sum + seq.target())
+        self.data.iter().fold(Object::unit(), |prod, seq| prod * seq.target())
     }
 }
 
-impl<T: Eq + Ord, A> Arrow<T> for Action<A> where A: Arrow<T> {
+impl<T: Eq + Ord + Clone, A> Arrow<T> for Action<A> where A: Arrow<T> {
     fn source(&self) -> Object<T> {
         match self {
             Action::Operation(operation) => operation.source(),

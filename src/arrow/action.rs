@@ -2,18 +2,18 @@
 
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Operation<T> {
-    Value(T),
+pub enum Operation<A> {
+    Value(A),
     Identity,
 }
 
-impl<T> From<T> for Operation<T> {
-    fn from(value: T) -> Self {
+impl<A> From<A> for Operation<A> {
+    fn from(value: A) -> Self {
         Operation::Value(value)
     }
 }
 
-impl<T: std::fmt::Display> std::fmt::Display for Operation<T> {
+impl<A: std::fmt::Display> std::fmt::Display for Operation<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Operation::Value(value) => write!(f, "{}", value),
@@ -24,34 +24,34 @@ impl<T: std::fmt::Display> std::fmt::Display for Operation<T> {
 
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Sequence<T> {
-    pub data: Vec<Operation<T>>
+pub struct Sequence<A> {
+    pub data: Vec<Operation<A>>
 }
 
-impl<T> From<Operation<T>> for Sequence<T> {
-    fn from(atom: Operation<T>) -> Self {
+impl<A> From<Operation<A>> for Sequence<A> {
+    fn from(atom: Operation<A>) -> Self {
         Sequence {
             data: [atom].into()
         }
     }
 }
 
-impl<T> From<T> for Sequence<T> {
-    fn from(value: T) -> Self {
-        let atom: Operation<T> = value.into();
+impl<A> From<A> for Sequence<A> {
+    fn from(value: A) -> Self {
+        let atom: Operation<A> = value.into();
         atom.into()
     }
 }
 
-impl<T: Ord> Sequence<T> {
-    pub fn new<I: IntoIterator<Item = Operation<T>>>(data: I) -> Sequence<T> {
+impl<A: Ord> Sequence<A> {
+    pub fn new<I: IntoIterator<Item = Operation<A>>>(data: I) -> Sequence<A> {
         Sequence {
             data: data.into_iter().collect()
         }
     }
 }
 
-impl<T: std::fmt::Display> std::fmt::Display for Sequence<T> {
+impl<A: std::fmt::Display> std::fmt::Display for Sequence<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.data.iter()
             .map(|atom| atom.to_string())
@@ -62,35 +62,35 @@ impl<T: std::fmt::Display> std::fmt::Display for Sequence<T> {
 
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Parallel<T> {
-    pub data: Vec<Sequence<T>>
+pub struct Parallel<A> {
+    pub data: Vec<Sequence<A>>
 }
 
-impl<T> From<Sequence<T>> for Parallel<T> {
-    fn from(product: Sequence<T>) -> Self {
+impl<A> From<Sequence<A>> for Parallel<A> {
+    fn from(product: Sequence<A>) -> Self {
         Parallel {
             data: [product].into()
         }
     }
 }
 
-impl<T> From<Operation<T>> for Parallel<T> {
-    fn from(atom: Operation<T>) -> Self {
-        let product: Sequence<T> = atom.into();
+impl<A> From<Operation<A>> for Parallel<A> {
+    fn from(atom: Operation<A>) -> Self {
+        let product: Sequence<A> = atom.into();
         product.into()
     }
 }
 
-impl<T> From<T> for Parallel<T> {
-    fn from(value: T) -> Self {
-        let atom: Operation<T> = value.into();
+impl<A> From<A> for Parallel<A> {
+    fn from(value: A) -> Self {
+        let atom: Operation<A> = value.into();
         atom.into()
     }
 }
 
-impl<T: Ord> Parallel<T> {
-    pub fn new<I: IntoIterator<Item = Sequence<T>>>(data: I) -> Parallel<T> {
-        let mut data: Vec<Sequence<T>> = data.into_iter().collect();
+impl<A: Ord> Parallel<A> {
+    pub fn new<I: IntoIterator<Item = Sequence<A>>>(data: I) -> Parallel<A> {
+        let mut data: Vec<Sequence<A>> = data.into_iter().collect();
         data.sort();
         Parallel {
             data
@@ -98,55 +98,61 @@ impl<T: Ord> Parallel<T> {
     }
 }
 
-impl<T: std::fmt::Display> std::fmt::Display for Parallel<T> {
+impl<A: std::fmt::Display> std::fmt::Display for Parallel<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.data.iter()
-            .map(|prod| prod.to_string())
-            .collect::<Vec<_>>()
-            .join(" | "))
+        if self.data.len() == 1 {
+            write!(f, "{}", self.data[0])
+        } else {
+            write!(f, "({})", self.data.iter()
+                .map(|prod| prod.to_string())
+                .collect::<Vec<_>>()
+                .join(", "))
+        }
+        
     }
 }
 
 
 #[derive(Clone)]
-pub enum Action<T> {
-    Operation(Operation<T>),
-    Sequence(Sequence<T>),
-    Parallel(Parallel<T>)
+pub enum Action<A> {
+    Operation(Operation<A>),
+    Sequence(Sequence<A>),
+    Parallel(Parallel<A>),
+    // Disjoint(???)
 }
 
-impl<T> Action<T> {
-    pub fn identity() -> Action<T> {
+impl<A> Action<A> {
+    pub fn identity() -> Action<A> {
         Self::Operation(Operation::Identity)
     }
 }
 
-impl<T> From<T> for Action<T> {
-    fn from(value: T) -> Self {
-        let atom: Operation<T> = value.into();
+impl<A> From<A> for Action<A> {
+    fn from(value: A) -> Self {
+        let atom: Operation<A> = value.into();
         atom.into()
     }
 }
 
-impl<T> From<Operation<T>> for Action<T> {
-    fn from(atom: Operation<T>) -> Self {
+impl<A> From<Operation<A>> for Action<A> {
+    fn from(atom: Operation<A>) -> Self {
         Action::Operation(atom)
     }
 }
 
-impl<T> From<Sequence<T>> for Action<T> {
-    fn from(product: Sequence<T>) -> Self {
+impl<A> From<Sequence<A>> for Action<A> {
+    fn from(product: Sequence<A>) -> Self {
         Action::Sequence(product)
     }
 }
 
-impl<T> From<Parallel<T>> for Action<T> {
-    fn from(sum: Parallel<T>) -> Self {
+impl<A> From<Parallel<A>> for Action<A> {
+    fn from(sum: Parallel<A>) -> Self {
         Action::Parallel(sum)
     }
 }
 
-impl<T: std::fmt::Display> std::fmt::Display for Action<T> {
+impl<A: std::fmt::Display> std::fmt::Display for Action<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Action::Operation(atom) => atom.fmt(f),
@@ -157,8 +163,8 @@ impl<T: std::fmt::Display> std::fmt::Display for Action<T> {
 }
 
 
-impl<T> std::ops::Add for Action<T> where T: Ord {
-    type Output = Action<T>;
+impl<A: Ord> std::ops::Add for Action<A> {
+    type Output = Action<A>;
 
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
@@ -193,8 +199,8 @@ impl<T> std::ops::Add for Action<T> where T: Ord {
     }
 }
 
-impl<T> std::ops::Mul for Action<T> where T: Ord + Clone {
-    type Output = Action<T>;
+impl<A: Ord + Clone> std::ops::Mul for Action<A> {
+    type Output = Action<A>;
 
     fn mul(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
