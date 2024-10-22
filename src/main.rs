@@ -29,6 +29,9 @@ impl Arrow<char> for Test {
 }
 
 
+
+
+
 fn main() {
 
     let x: Object<char> = Atom::Value('X').into();
@@ -56,4 +59,6 @@ fn main() {
     println!("{} : {} -> {}", f2, f2.source(), f2.target());
     println!("{} : {} -> {}", f3, f3.source(), f3.target());
     println!("{} : {} -> {}", f4, f4.source(), f4.target());
+
+
 }
