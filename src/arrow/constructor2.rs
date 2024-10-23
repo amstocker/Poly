@@ -1,37 +1,96 @@
+use std::hash::Hash;
+
+use im::{HashMap, Vector};
 
 
-pub type Index = usize;
 
-pub enum Constructor<A> {
-    Atom(A),
-    Sum(Vec<Index>),
-    Product(Vec<Index>),
-    Sequence(Vec<Index>)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Constructor<T: Clone> {
+    Atom(T),
+    Sum(Vector<Constructor<T>>),
+    Product(Vector<Constructor<T>>),
+    Sequence(Vector<Constructor<T>>)
 }
 
-pub trait Constructible {
-    fn add(self, other: Self) -> Self;
-    fn mult(self, other: Self) -> Self;
-    fn compose(self, other: Self) -> Self;
+pub trait Constructible<T> {
+    fn atom(t: T) -> Self;
     fn zero() -> Self;
     fn unit() -> Self;
     fn identity() -> Self;
+    fn add(self, other: Self) -> Self;
+    fn mult(self, other: Self) -> Self;
+    fn compose(self, other: Self) -> Self;
 }
 
-pub struct Constructors<A> {
-    elements: Vec<Constructor<A>>
+impl<T: Clone> Constructor<T> {
+    pub fn build<A: Constructible<T>>(self) -> A {
+        match self {
+            Constructor::Atom(t) => Constructible::atom(t),
+            Constructor::Sum(elems) => elems.into_iter()
+                .fold(Constructible::zero(), |acc, other| acc.add(other.build())),
+            Constructor::Product(elems) => elems.into_iter()
+                .fold(Constructible::unit(), |acc, other| acc.mult(other.build())),
+            Constructor::Sequence(elems) => elems.into_iter()
+                .fold(Constructible::identity(), |acc, other| acc.compose(other.build())),
+        }
+    }
 }
 
-impl<A> Constructors<A> {
-    pub fn construct(&self, index: Index) -> A where A: Constructible + Clone {
-        match &self.elements[index] {
-            Constructor::Atom(atom) => atom.clone(),
-            Constructor::Sum(elems) => elems.iter().copied()
-                .fold(A::zero(), |acc, index| acc.add(self.construct(index))),
-            Constructor::Product(elems) => elems.iter().copied()
-                .fold(A::unit(), |acc, index| acc.mult(self.construct(index))),
-            Constructor::Sequence(elems) => elems.iter().copied()
-                .fold(A::identity(), |acc, index| acc.compose(self.construct(index))),
+
+pub enum Arrow<T: Clone> {
+    Zero,
+    Identity,
+    Arrow(HashMap<Constructor<T>, Constructor<T>>)
+}
+
+impl<T: Clone + Eq + Hash> Constructible<Arrow<T>> for Arrow<T> {
+    fn atom(arrow: Arrow<T>) -> Self {
+        arrow
+    }
+
+    fn zero() -> Self {
+        Arrow::Zero
+    }
+
+    fn unit() -> Self {
+        Arrow::Identity
+    }
+
+    fn identity() -> Self {
+        Arrow::Identity
+    }
+
+    fn add(self, other: Self) -> Self {
+        match (self, other) {
+            (Arrow::Arrow(left), Arrow::Arrow(right)) => todo!(),
+            (Arrow::Identity, arrow) | (arrow, Arrow::Identity) => arrow,
+            (Arrow::Zero, _) | (_, Arrow::Zero) => Arrow::Zero
+        }
+    }
+
+    fn mult(self, other: Self) -> Self {
+        match (self, other) {
+            (Arrow::Arrow(left), Arrow::Arrow(right)) => todo!(),
+            (Arrow::Identity, arrow) | (arrow, Arrow::Identity) => arrow,
+            (Arrow::Zero, _) | (_, Arrow::Zero) => Arrow::Zero
+        }
+    }
+
+    fn compose(self, other: Self) -> Self {
+        match (self, other) {
+            (Arrow::Arrow(first), Arrow::Arrow(second)) => {
+                let mut composition = HashMap::new();
+                for (x, y1) in first.iter() {
+                    for (y2, z) in second.iter() {
+                        if y1 == y2 {
+                            composition.insert(x.clone(), z.clone());
+                        }
+                    }
+                }
+                Arrow::Arrow(composition)
+            },
+            (Arrow::Identity, arrow) | (arrow, Arrow::Identity) => arrow,
+            (Arrow::Zero, _) | (_, Arrow::Zero) => Arrow::Zero
         }
     }
 }
