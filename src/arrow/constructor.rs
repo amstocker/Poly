@@ -1,14 +1,22 @@
 
+
+
 pub trait Constructor<T> {
     fn construct(self) -> T;
 }
 
 
-// TODO: T should really be an object that implements parallel and disjoint composition
+#[derive(PartialEq, Eq)]
+pub enum Object<T> {
+    Atom(T),
+    Product(Parallel<T>),
+    Sum(Disjoint<T>)
+}
+
 pub enum Arrow<T> {
     Arrow {
-        source: T,
-        target: T
+        source: Object<T>,
+        target: Object<T>
     },
     Identity,
     Zero
@@ -38,8 +46,8 @@ impl<T: Eq> Arrow<T> {
     pub fn and(self, other: Self) -> Self {
         match (self, other) {
             (Arrow::Arrow { source, target }, Arrow::Arrow { source: other_source, target: other_target }) => todo!(),
-            (Arrow::Zero, _) | (_, Arrow::Zero) => Arrow::Zero,
             (Arrow::Identity, arrow) | (arrow, Arrow::Identity) => arrow,
+            (Arrow::Zero, _) | (_, Arrow::Zero) => Arrow::Zero
         }
     }
 
@@ -58,116 +66,75 @@ impl<T: Eq> Arrow<T> {
     }
 }
 
-impl<T: Eq> Constructor<Arrow<T>> for Sequence<Arrow<T>> {
-    fn construct(self) -> Arrow<T> {
-        self.data.into_iter()
-            .fold(Arrow::Identity, |acc, next| acc.then(next))
-    }
+//impl<T: Eq> Constructor<Arrow<T>> for Sequence<Arrow<T>> {
+//    fn construct(self) -> Arrow<T> {
+//        self.data.into_iter()
+//            .fold(Arrow::Identity, |acc, next| acc.then(next))
+//    }
+//}
+//
+//impl<T: Eq> Constructor<Arrow<T>> for Parallel<Arrow<T>> {
+//    fn construct(self) -> Arrow<T> {
+//        self.data.into_iter()
+//            .fold(Arrow::Identity, |acc, next| acc.and(next.construct()))
+//    }
+//}
+//
+//impl<T: Eq> Constructor<Arrow<T>> for Disjoint<Arrow<T>> {
+//    fn construct(self) -> Arrow<T> {
+//        self.data.into_iter()
+//            .fold(Arrow::Zero, |acc, next| acc.or(next.construct()))
+//    }
+//}
+
+
+
+pub trait ComposeSequence<A, B> {
+    fn then(self, other: impl Into<Sequence<A>>) -> B;
 }
 
-impl<T: Eq> Constructor<Arrow<T>> for Parallel<Arrow<T>> {
-    fn construct(self) -> Arrow<T> {
-        self.data.into_iter()
-            .fold(Arrow::Identity, |acc, next| acc.and(next.construct()))
-    }
+pub trait ComposeParallel<A, B> {
+    fn and(self, other: impl Into<Parallel<A>>) -> B;
 }
 
-impl<T: Eq> Constructor<Arrow<T>> for Either<Arrow<T>> {
-    fn construct(self) -> Arrow<T> {
-        self.data.into_iter()
-            .fold(Arrow::Zero, |acc, next| acc.or(next.construct()))
-    }
+pub trait ComposeDisjoint<A, B> {
+    fn or(self, other: impl Into<Disjoint<A>>) -> B;
 }
 
 
 
 
 
-pub trait ComposeSequence<T, A> {
-    fn then(self, other: T) -> Sequence<A>;
-}
-
-pub trait ComposeParallel<T, A> {
-    fn and(self, other: T) -> Parallel<A>;
-}
-
-pub trait ComposeEither<T, A> {
-    fn or(self, other: T) -> Either<A>;
-}
-
-
-
+/*
+ * Parallel
+ */
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Sequence<A> {
+pub struct Parallel<A> {
     data: Vec<A>
 }
 
-impl<A> From<A> for Sequence<A> {
+impl<A> From<A> for Parallel<A> {
     fn from(value: A) -> Self {
-        Sequence {
+        Parallel {
             data: [value].into()
         }
     }
 }
 
-impl<A: Ord> Sequence<A> {
-    pub fn new(data: Vec<A>) -> Sequence<A> {
-        Sequence {
-            data
-        }
-    }
-}
-
-// TODO: impl Into<Sequence<A>> for &Sequence<A> using clone?
-impl<T1, T2, A> ComposeSequence<T2, A> for T1
-where
-    T1: Into<Sequence<A>>,
-    T2: Into<Sequence<A>>,
-    A: Ord
-{
-    fn then(self, other: T2) -> Sequence<A> {
-        let mut data = self.into().data;
-        data.append(&mut other.into().data);
-        Sequence::new(data)
-    }
-}
-
-impl<A: std::fmt::Display> std::fmt::Display for Sequence<A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.data.iter()
-            .map(|atom| atom.to_string())
-            .collect::<Vec<_>>()
-            .join(" -> ")) 
-    }
-}
-
-
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Parallel<A> {
-    data: Vec<Sequence<A>>
-}
-
-impl<A> From<Sequence<A>> for Parallel<A> {
-    fn from(sequence: Sequence<A>) -> Self {
-        Parallel {
-            data: [sequence].into()
-        }
-    }
-}
-
-impl<A> From<A> for Parallel<A> {
-    fn from(value: A) -> Self {
-        let sequence: Sequence<A> = value.into();
-        sequence.into()
-    }
-}
-
 impl<A: Ord> Parallel<A> {
-    pub fn new(mut data: Vec<Sequence<A>>) -> Parallel<A> {
+    pub fn new(mut data: Vec<A>) -> Parallel<A> {
         data.sort();
         Parallel {
             data
         }
+    }
+}
+
+impl<T: Into<Parallel<A>>, A: Ord> ComposeParallel<A, Parallel<A>> for T {
+    fn and(self, other: impl Into<Parallel<A>>) -> Parallel<A> {
+        let mut data = self.into().data;
+        data.append(&mut other.into().data);
+        Parallel::new(data)
     }
 }
 
@@ -186,34 +153,59 @@ impl<A: std::fmt::Display> std::fmt::Display for Parallel<A> {
 }
 
 
+/*
+ * Disjoint
+ */
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Either<A> {
+pub struct Disjoint<A> {
     data: Vec<Parallel<A>>
 }
 
-impl<A> From<Parallel<A>> for Either<A> {
+impl<A> From<Parallel<A>> for Disjoint<A> {
     fn from(parallel: Parallel<A>) -> Self {
-        Either {
+        Disjoint {
             data: [parallel].into()
         }
     }
 }
 
-impl<A> From<Sequence<A>> for Either<A> {
-    fn from(sequence: Sequence<A>) -> Self {
-        let parallel: Parallel<A> = sequence.into();
+impl<A> From<A> for Disjoint<A> {
+    fn from(value: A) -> Self {
+        let parallel: Parallel<A> = value.into();
         parallel.into()
     }
 }
 
-impl<A> From<A> for Either<A> {
-    fn from(value: A) -> Self {
-        let sequence: Sequence<A> = value.into();
-        sequence.into()
+impl<A: Ord> Disjoint<A> {
+    pub fn new(mut data: Vec<Parallel<A>>) -> Disjoint<A> {
+        data.sort();
+        Disjoint {
+            data
+        }
     }
 }
 
-impl<A: std::fmt::Display> std::fmt::Display for Either<A> {
+//impl<T: Into<Disjoint<A>>, A> ComposeDisjoint<A, Disjoint<A>> for T {
+//    fn or(self, mut either: Disjoint<A>) -> Disjoint<A> {
+//        let mut data = self.into().data;
+//        data.append(&mut either.data);
+//        Disjoint {
+//            data
+//        }
+//    }
+//}
+//
+//impl<T: Into<Disjoint<A>>, A> ComposeParallel<A, Disjoint<A>> for T {
+//    fn and(self, other_parallel: Parallel<A>) -> Disjoint<A> {
+//        let mut either = self.into();
+//        for parallel in &mut either.data {
+//            *parallel = parallel.and(other_parallel);
+//        }
+//        either
+//    }
+//}
+
+impl<A: std::fmt::Display> std::fmt::Display for Disjoint<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.data.iter()
             .map(|parallel| parallel.to_string())
@@ -222,12 +214,59 @@ impl<A: std::fmt::Display> std::fmt::Display for Either<A> {
     }
 }
 
-impl<A: Ord> Either<A> {
-    pub fn new(mut data: Vec<Parallel<A>>) -> Either<A> {
-        data.sort();
-        Either {
+
+/*
+ * Sequence
+ */
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Sequence<A> {
+    data: Vec<Disjoint<A>>
+}
+
+impl<A> From<Disjoint<A>> for Sequence<A> {
+    fn from(disjoint: Disjoint<A>) -> Self {
+        Sequence {
+            data: [disjoint].into()
+        }
+    }
+}
+
+impl<A> From<Parallel<A>> for Sequence<A> {
+    fn from(value: Parallel<A>) -> Self {
+        let disjoint: Disjoint<A> = value.into();
+        disjoint.into()
+    }
+}
+
+impl<A> From<A> for Sequence<A> {
+    fn from(value: A) -> Self {
+        let parallel: Parallel<A> = value.into();
+        parallel.into()
+    }
+}
+
+impl<A> Sequence<A> {
+    pub fn new(data: Vec<Disjoint<A>>) -> Sequence<A> {
+        Sequence {
             data
         }
+    }
+}
+
+impl<T: Into<Sequence<A>>, A> ComposeSequence<A, Sequence<A>> for T {
+    fn then(self, other: impl Into<Sequence<A>>) -> Sequence<A> {
+        let mut seq: Sequence<A> = self.into();
+        seq.data.append(&mut other.into().data);
+        seq
+    }
+}
+
+impl<A: std::fmt::Display> std::fmt::Display for Sequence<A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.data.iter()
+            .map(|atom| atom.to_string())
+            .collect::<Vec<_>>()
+            .join(" -> ")) 
     }
 }
 

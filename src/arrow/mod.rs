@@ -2,6 +2,7 @@ pub mod action;
 pub mod object;
 pub mod query;
 pub mod constructor;
+pub mod constructor2;
 
 pub use action::*;
 pub use object::*;
