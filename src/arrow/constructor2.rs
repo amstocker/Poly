@@ -13,16 +13,16 @@ pub enum Constructor<T: Clone> {
 }
 
 impl<'t, T: Clone + 't> Constructor<T> {
-    pub fn sum(iter: impl IntoIterator<Item = &'t Constructor<T>>) -> Constructor<T> {
-        Constructor::Sum(iter.into_iter().cloned().collect())
+    pub fn sum(elems: impl IntoIterator<Item = &'t Constructor<T>>) -> Constructor<T> {
+        Constructor::Sum(elems.into_iter().cloned().collect())
     }
 
-    pub fn product(iter: impl IntoIterator<Item = &'t Constructor<T>>) -> Constructor<T> {
-        Constructor::Product(iter.into_iter().cloned().collect())
+    pub fn product(elems: impl IntoIterator<Item = &'t Constructor<T>>) -> Constructor<T> {
+        Constructor::Product(elems.into_iter().cloned().collect())
     }
 
-    pub fn sequence(iter: impl IntoIterator<Item = &'t Constructor<T>>) -> Constructor<T> {
-        Constructor::Sequence(iter.into_iter().cloned().collect())
+    pub fn sequence(elems: impl IntoIterator<Item = &'t Constructor<T>>) -> Constructor<T> {
+        Constructor::Sequence(elems.into_iter().cloned().collect())
     }
 }
 
@@ -69,8 +69,16 @@ impl<T: Clone> Constructor<T> {
 pub struct Arrow<T: Clone + Eq + Hash>(HashMap<Constructor<T>, Constructor<T>>);
 
 impl<'t, T: Clone + Eq + Hash + 't> Arrow<T> {
-    pub fn arrow(iter: impl IntoIterator<Item = (&'t Constructor<T>, &'t Constructor<T>)>) -> Arrow<T> {
-        Arrow(iter.into_iter().map(|(x, y)| (x.clone(), y.clone())).collect())
+    pub fn new(map: impl IntoIterator<Item = (&'t Constructor<T>, &'t Constructor<T>)>) -> Arrow<T> {
+        Arrow(map.into_iter()
+            .map(|(x, y)| (x.clone(), y.clone()))
+            .collect())
+    }
+
+    pub fn dup(elems: impl IntoIterator<Item = &'t Constructor<T>>) -> Arrow<T> {
+        Arrow(elems.into_iter()
+            .map(|x| (x.clone(), Constructor::product([x, x])))
+            .collect())
     }
 }
 
