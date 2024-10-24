@@ -13,7 +13,7 @@ pub enum Constructor<T: Clone> {
 }
 
 pub trait Constructible<T> {
-    fn atom(t: &T) -> Self;
+    fn new(t: &T) -> Self;
     fn add(&self, other: &Self) -> Self;
     fn mult(&self, other: &Self) -> Self;
     fn then(&self, other: &Self) -> Self;
@@ -38,7 +38,7 @@ impl<'t, T: Clone + 't> Constructor<T> {
 
     pub fn build<A: Constructible<T>>(&self) -> A {
         match self {
-            Constructor::Atom(t) => Constructible::atom(t),
+            Constructor::Atom(t) => Constructible::new(t),
             Constructor::Sum(elems) => elems.into_iter()
                 .map(|elem| elem.build::<A>())
                 .reduce(|acc, elem| acc.add(&elem)).unwrap(),

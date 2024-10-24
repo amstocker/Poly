@@ -25,7 +25,7 @@ impl<'t, T: Clone + Eq + Hash + 't> Arrow<T> {
 }
 
 impl<T: Clone + Eq + Hash> Constructible<Arrow<T>> for Arrow<T> {
-    fn atom(arrow: &Arrow<T>) -> Self {
+    fn new(arrow: &Arrow<T>) -> Self {
         arrow.clone()
     }
 

@@ -32,7 +32,7 @@ fn main() {
     let r = &Constructor::atom(f);
     let s = &Constructor::atom(g);
     let c = Constructor::sequence([r, s]);
-    let t: Arrow<_> = c.clone().build();
+    let t: Arrow<_> = c.build();
     
     println!("seq: {}", c);
     println!("seq build: {}", t);
