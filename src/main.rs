@@ -19,9 +19,9 @@ fn main() {
     let a = Constructor::Atom('a');
     let b = Constructor::Atom('b');
 
-    let f = Arrow::arrow([(x.clone(), a.clone()), (y.clone(), a.clone()), (z.clone(), b.clone())]);
-    let g = Arrow::arrow([(b.clone(), a.clone()), (a.clone(), b.clone())]);
-    let h = Arrow::arrow([(x.clone(), b.clone()), (a.clone(), a.clone())]);
+    let f = Arrow::arrow([(&x, &a), (&y, &a), (&z, &b)]);
+    let g = Arrow::arrow([(&b, &a), (&a, &b)]);
+    let h = Arrow::arrow([(&x, &b), (&a, &a)]);
 
     println!("f: {f}");
     println!("g: {g}");
