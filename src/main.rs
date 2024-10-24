@@ -1,7 +1,8 @@
+mod diagram_old;
 mod diagram;
-mod arrow;
 
-use arrow::constructor2::*;
+use diagram::arrow::*;
+use diagram::constructor::*;
 
 
 fn main() {
@@ -21,16 +22,18 @@ fn main() {
     println!("f: {f}");
     println!("g: {g}");
     println!("h: {h}");
-    println!("f -> g: {}", f.clone().compose(g.clone()));
-    println!("f -> h: {}", f.clone().compose(h.clone()));
-    println!("f + g: {}", f.clone().add(h.clone()));
+    println!("f -> g: {}", f.then(g));
+    println!("f -> h: {}", f.then(h));
+    println!("f + g: {}", f.add(h));
     println!("d: {}", d.clone());
-    println!("f * f: {}", f.clone().mult(f.clone()));
-    println!("d -> (f * f): {}", d.clone().compose(f.clone().mult(f.clone())));
+    println!("f * f: {}", f.mult(f));
+    println!("d -> (f * f): {}", d.then(&f.mult(f)));
 
     let r = &Constructor::atom(f);
-    let s = &Constructor::atom(f);
-    let c = Constructor::product([r, s]);
-    let t: Arrow<_> = c.build();
-    println!("{}", t);
+    let s = &Constructor::atom(g);
+    let c = Constructor::sequence([r, s]);
+    let t: Arrow<_> = c.clone().build();
+    
+    println!("seq: {}", c);
+    println!("seq build: {}", t);
 }
