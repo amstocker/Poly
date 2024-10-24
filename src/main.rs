@@ -27,5 +27,10 @@ fn main() {
     println!("d: {}", d.clone());
     println!("f * f: {}", f.clone().mult(f.clone()));
     println!("d -> (f * f): {}", d.clone().compose(f.clone().mult(f.clone())));
-    // Fix API by implementing Constructor for Into?
+
+    let r = &Constructor::atom(f);
+    let s = &Constructor::atom(f);
+    let c = Constructor::product([r, s]);
+    let t: Arrow<_> = c.build();
+    println!("{}", t);
 }

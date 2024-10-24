@@ -12,7 +12,18 @@ pub enum Constructor<T: Clone> {
     Sequence(Vector<Constructor<T>>)
 }
 
+pub trait Constructible<T> {
+    fn atom(t: T) -> Self;
+    fn add(self, other: Self) -> Self;
+    fn mult(self, other: Self) -> Self;
+    fn compose(self, other: Self) -> Self;
+}
+
 impl<'t, T: Clone + 't> Constructor<T> {
+    pub fn atom(elem: &'t T) -> Constructor<T> {
+        Constructor::Atom(elem.clone())
+    }
+
     pub fn sum(elems: impl IntoIterator<Item = &'t Constructor<T>>) -> Constructor<T> {
         Constructor::Sum(elems.into_iter().cloned().collect())
     }
@@ -26,27 +37,6 @@ impl<'t, T: Clone + 't> Constructor<T> {
     }
 }
 
-impl<T: Clone + std::fmt::Display> std::fmt::Display for Constructor<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Constructor::Atom(atom) => write!(f, "{}", atom),
-            Constructor::Sum(elems) =>
-                write!(f, "{}", elems.iter().map(|elem| elem.to_string()).collect::<Vec<_>>().join(" + ")),
-            Constructor::Product(elems) =>
-                write!(f, "({})", elems.iter().map(|elem| elem.to_string()).collect::<Vec<_>>().join(", ")),
-            Constructor::Sequence(elems) =>
-                write!(f, "[{}]", elems.iter().map(|elem| elem.to_string()).collect::<Vec<_>>().join(" -> ")),
-        }
-    }
-}
-
-pub trait Constructible<T> {
-    fn atom(t: T) -> Self;
-    fn add(self, other: Self) -> Self;
-    fn mult(self, other: Self) -> Self;
-    fn compose(self, other: Self) -> Self;
-}
-
 impl<T: Clone> Constructor<T> {
     pub fn build<A: Constructible<T>>(self) -> A {
         match self {
@@ -56,10 +46,10 @@ impl<T: Clone> Constructor<T> {
                 .reduce(|acc, elem| acc.add(elem)).unwrap(),
             Constructor::Product(elems) => elems.into_iter()
                 .map(|elem| elem.build::<A>())
-                .reduce(|acc, elem| acc.add(elem)).unwrap(),
+                .reduce(|acc, elem| acc.mult(elem)).unwrap(),
             Constructor::Sequence(elems) => elems.into_iter()
                 .map(|elem| elem.build::<A>())
-                .reduce(|acc, elem| acc.add(elem)).unwrap()
+                .reduce(|acc, elem| acc.compose(elem)).unwrap()
         }
     }
 }
@@ -128,12 +118,27 @@ impl<T: Clone + Eq + Hash> Constructible<Arrow<T>> for Arrow<T> {
     }
 }
 
+
+impl<T: Clone + std::fmt::Display> std::fmt::Display for Constructor<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Constructor::Atom(atom) => write!(f, "{}", atom),
+            Constructor::Sum(elems) =>
+                write!(f, "{}", elems.iter().map(|elem| elem.to_string()).collect::<Vec<_>>().join(" + ")),
+            Constructor::Product(elems) =>
+                write!(f, "({})", elems.iter().map(|elem| elem.to_string()).collect::<Vec<_>>().join(", ")),
+            Constructor::Sequence(elems) =>
+                write!(f, "[{}]", elems.iter().map(|elem| elem.to_string()).collect::<Vec<_>>().join(" -> ")),
+        }
+    }
+}
+
 impl<T: Clone + Eq + Hash + std::fmt::Display> std::fmt::Display for Arrow<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let pairs = self.0.iter()
             .map(|(x, y)| format!("{} => {}", x.to_string(), y.to_string()))
             .collect::<Vec<_>>()
-            .join(" , ");
-        write!(f, "{{ {} }}", pairs)
+            .join(", ");
+        write!(f, "{{{}}}", pairs)
     }
 }
