@@ -5,10 +5,19 @@ use super::constructor::*;
 
 
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Arrow<T: Clone + Eq + Hash>(
     HashMap<Constructor<T>, Constructor<T>>
 );
+
+impl<T: Clone + Eq + Hash, I> From<I> for Arrow<T>
+where
+    I: Iterator<Item = (Constructor<T>, Constructor<T>)>
+{
+    fn from(pairs: I) -> Self {
+        Arrow(pairs.into_iter().collect())
+    }
+}
 
 impl<'t, T: Clone + Eq + Hash + 't> Arrow<T> {
     pub fn new(map: impl IntoIterator<Item = (&'t Constructor<T>, &'t Constructor<T>)>) -> Arrow<T> {
@@ -21,6 +30,10 @@ impl<'t, T: Clone + Eq + Hash + 't> Arrow<T> {
         Arrow(elems.into_iter()
             .map(|x| (x.clone(), Constructor::product([x, x])))
             .collect())
+    }
+
+    pub fn apply(&self, x: &Constructor<T>) -> Option<Constructor<T>> {
+        self.0.get(x).cloned()
     }
 }
 

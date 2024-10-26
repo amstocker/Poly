@@ -4,12 +4,18 @@ use im::Vector;
 
 
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Constructor<T: Clone> {
     Atom(T),
     Sum(Vector<Constructor<T>>),
     Product(Vector<Constructor<T>>),
     Sequence(Vector<Constructor<T>>)
+}
+
+impl<T: Clone> From<T> for Constructor<T> {
+    fn from(value: T) -> Self {
+        Constructor::Atom(value)
+    }
 }
 
 pub trait Constructible<T> {

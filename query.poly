@@ -1,0 +1,4 @@
+arrow { X => A, Y => A, Z => B }
+arrow { A => C, B => D }
+
+query { X => _ }
