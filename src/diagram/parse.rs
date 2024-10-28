@@ -3,9 +3,9 @@ use std::hash::Hash;
 use chumsky::prelude::*;
 use chumsky::text::newline;
 
-use super::arrow::*;
-use super::constructor::*;
-use super::query::*;
+use super::arrow::Arrow;
+use super::constructor::Constructor;
+use super::query::Placeholder;
 
 
 
@@ -26,20 +26,20 @@ where
 }
 
 fn arrow_decl() -> impl Parser<char, Arrow<String>, Error = Simple<char>> {
-    text::keyword("arrow")
-        .padded()
-        .ignore_then(arrow::<String>()) 
+    text::keyword("arrow").padded()
+        .ignore_then(arrow()) 
 }
 
 fn arrow_query() -> impl Parser<char, Arrow<Placeholder<String>>, Error = Simple<char>> {
-    text::keyword("query")
-        .padded()
-        .ignore_then(arrow::<Placeholder<String>>())
+    text::keyword("query").padded()
+        .ignore_then(arrow())
 }
 
 
 pub fn parser() -> impl Parser<char, (Vec<Arrow<String>>, Arrow<Placeholder<String>>), Error = Simple<char>> {
-    arrow_decl().separated_by(newline().repeated())
+    arrow_decl()
+        .separated_by(newline().repeated())
         .then(arrow_query())
+        .padded()
         .then_ignore(end())
 }

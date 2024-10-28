@@ -1,11 +1,11 @@
 use std::hash::Hash;
 
-use im::HashMap;
+use im::{HashMap, HashSet};
 use super::constructor::*;
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Arrow<T: Clone + Eq + Hash>(
     HashMap<Constructor<T>, Constructor<T>>
 );
@@ -34,6 +34,14 @@ impl<'t, T: Clone + Eq + Hash + 't> Arrow<T> {
 
     pub fn apply(&self, x: &Constructor<T>) -> Option<Constructor<T>> {
         self.0.get(x).cloned()
+    }
+
+    pub fn source(&self) -> HashSet<Constructor<T>> {
+        self.0.keys().cloned().collect()
+    }
+
+    pub fn target(&self) -> HashSet<Constructor<T>> {
+        self.0.values().cloned().collect()
     }
 }
 

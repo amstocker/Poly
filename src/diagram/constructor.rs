@@ -18,7 +18,7 @@ impl<T: Clone> From<T> for Constructor<T> {
     }
 }
 
-pub trait Constructible<T> {
+pub trait Constructible<T, Ctx = ()> {
     fn new(t: &T) -> Self;
     fn add(&self, other: &Self) -> Self;
     fn mult(&self, other: &Self) -> Self;
