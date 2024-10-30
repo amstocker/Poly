@@ -22,7 +22,7 @@ pub struct Pair<T: Clone> {
 
 impl<T: Clone + Eq + Hash, I> From<I> for Arrow<T>
 where
-    I: Iterator<Item = (Constructor<T>, Constructor<T>)>
+    I: IntoIterator<Item = (Constructor<T>, Constructor<T>)>
 {
     fn from(pairs: I) -> Self {
         Arrow(pairs.into_iter().collect())

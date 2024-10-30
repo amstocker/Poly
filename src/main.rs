@@ -6,8 +6,6 @@ use diagram::{constructor::Constructor, parse::parser, query::Query};
 
 
 fn main() {
-    // TODO: Parse any constructor... binding is (recursively) product > sum > sequence
-
     let src = std::fs::read_to_string("./query.poly").unwrap();
     match parser().parse(src) {
         Ok((arrows, query)) => {
@@ -32,6 +30,11 @@ fn main() {
                 }
             }
         },
+        Err(err) => println!("{:?}", err),
+    }
+
+    match diagram::parse::constructor::<String>().parse("(X, Y) + Z") {
+        Ok(elem) => println!("{}", elem),
         Err(err) => println!("{:?}", err),
     }
 }

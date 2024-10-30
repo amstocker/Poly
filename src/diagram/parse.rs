@@ -1,27 +1,58 @@
 use std::hash::Hash;
 
 use chumsky::prelude::*;
-use chumsky::text::newline;
 
 use super::arrow::Arrow;
 use super::constructor::Constructor;
 use super::query::Placeholder;
 
 
+fn sum<T: Clone>(inner: impl Parser<char, Constructor<T>, Error = Simple<char>>) -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
+    inner
+        .padded()
+        .separated_by(just('+'))
+        .map(|elems| Constructor::Sum(elems.into()))
+}
+
+fn product<T: Clone>(inner: impl Parser<char, Constructor<T>, Error = Simple<char>>) -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
+    inner
+        .padded()
+        .separated_by(just(','))
+        .delimited_by(just('('), just(')'))
+        .map(|elems| Constructor::Product(elems.into()))
+}
+
+fn sequence<T: Clone>(inner: impl Parser<char, Constructor<T>, Error = Simple<char>>) -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
+    inner
+        .padded()
+        .separated_by(just("->"))
+        .delimited_by(just('['), just(']'))
+        .map(|elems| Constructor::Sum(elems.into()))
+}
+
+fn atom<T: Clone + From<String>>() -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
+    text::ident()
+        .padded()
+        .map(|ident| Constructor::Atom(T::from(ident)))
+}
+
+// TODO: Really a more intuitive notation is to have Sum represented by `|` and product represented by `+` ...
+pub fn constructor<T: Clone + From<String>>() -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
+    sum(product(atom()).or(atom()))
+        .or(product(atom()))
+        .or(atom())
+}
+
 
 fn arrow<T>() -> impl Parser<char, Arrow<T>, Error = Simple<char>>
 where
     T: Clone + Eq + Hash + From<String>
 {
-    let ident = text::ident().padded();
-
-    ident
+    constructor()
         .then_ignore(just("=>"))
-        .then(ident)
+        .then(constructor())
         .separated_by(just(','))
         .delimited_by(just('{'), just('}'))
-        .map(|pairs| pairs.into_iter().map(|(x, y)|
-            (Constructor::Atom(x.into()), Constructor::Atom(y.into()))))
         .map(|pairs| pairs.into())
 }
 
@@ -38,7 +69,7 @@ fn arrow_query() -> impl Parser<char, Arrow<Placeholder<String>>, Error = Simple
 
 pub fn parser() -> impl Parser<char, (Vec<Arrow<String>>, Arrow<Placeholder<String>>), Error = Simple<char>> {
     arrow_decl()
-        .separated_by(newline().repeated())
+        .separated_by(text::newline().repeated())
         .then(arrow_query())
         .padded()
         .then_ignore(end())

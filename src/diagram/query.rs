@@ -8,6 +8,8 @@ use super::{arrow::{Arrow, Pair}, constructor::*};
 
 const PLACEHOLDER: &'static str = "_";
 
+// TODO: This should really just be isomorphic to "Option",
+//       then we should be able to parse any Constructor of Placeholders
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Placeholder<T: Clone> {
     Blank,

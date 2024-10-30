@@ -1,4 +1,4 @@
-arrow { X => A, Y => A, Z => B }
-arrow { A => D, B => D }
+arrow { X => A, Y + Z => B, W => C }
+arrow { A + C => E, B => F }
 
-query { _ => D }
+query { _ => E }
