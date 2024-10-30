@@ -1,14 +1,14 @@
-use std::{collections::BinaryHeap, hash::Hash};
+use std::{collections::BinaryHeap, fmt::Debug, hash::Hash};
 
-use im::{HashSet, Vector};
+use im::Vector;
 
-use super::{arrow::Arrow, constructor::*};
+use super::{arrow::{Arrow, Pair}, constructor::*};
 
 
 
 const PLACEHOLDER: &'static str = "_";
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Placeholder<T: Clone> {
     Blank,
     Atom(Constructor<T>)
@@ -34,60 +34,86 @@ impl std::fmt::Display for Placeholder<String> {
 }
 
 
-pub type Index = usize;
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Path {
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Path<T: Clone> {
     depth: usize,
-    path: Vector<Index>
+    sequence: Vector<Pair<T>>
 }
 
-impl PartialOrd for Path {
+impl<T: Clone + std::fmt::Display> std::fmt::Display for Path<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut elems: Vec<_> = self.sequence.iter().map(|pair| pair.source.to_string()).collect();
+        if let Some(pair) = self.sequence.last() {
+            elems.push(pair.target.to_string());
+        }
+        write!(f, "{}", elems.join(" => "))
+    }
+}
+
+impl<T: Clone + Eq + Hash> PartialOrd for Path<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         other.depth.partial_cmp(&self.depth)
     }
 }
 
-impl Ord for Path {
+impl<T: Clone + Eq + Hash> Ord for Path<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         other.depth.cmp(&self.depth)
     }
 }
 
-impl Path {
-    pub fn new(index: Index) -> Path {
+impl<T: Clone + Eq + Hash> Path<T> {
+    pub fn empty() -> Path<T> {
         Path {
             depth: 0,
-            path: [index].into_iter().collect()
+            sequence: Vector::new()
         }
+    }
+
+    pub fn new(pair: &Pair<T>) -> Path<T> {
+        Path::empty().push(pair)
+    }
+
+    pub fn push(&self, pair: &Pair<T>) -> Path<T> {
+        let mut sequence = self.sequence.clone();
+        sequence.push_back(pair.clone());
+        Path {
+            depth: self.depth + 1,
+            sequence
+        }
+    }
+
+    pub fn target(&self) -> Constructor<T> {
+        self.sequence.last().unwrap().target.clone()
     }
 }
 
-// impl Constructible for Path?
-
 
 pub struct Query<T: Clone + Eq + Hash> {
-    arrows: Vec<Arrow<T>>,
-    sources: Vec<HashSet<Constructor<T>>>,
-    targets: Vec<HashSet<Constructor<T>>>,
+    pairs: Vec<Pair<T>>,
     source: Placeholder<T>,
     target: Placeholder<T>,
-    queue: BinaryHeap<Path>
+    queue: BinaryHeap<Path<T>>
 }
 
 impl<T: Clone + Eq + Hash> Query<T> {
     pub fn new(arrows: Vec<Arrow<T>>, source: Placeholder<T>, target: Placeholder<T>) -> Query<T> {
-        let queue = arrows.iter()
-            .enumerate()
-            .map(|(index, _)| Path::new(index)).collect();
-        let sources = arrows.iter()
-            .map(|arrow| arrow.source()).collect();
-        let targets = arrows.iter()
-            .map(|arrow| arrow.target()).collect();
+        let pairs: Vec<Pair<T>> = arrows.iter()
+            .flat_map(|arrow| arrow.pairs())
+            .collect();
+        let queue = pairs.iter()
+            .filter(|Pair { source: x, .. }|
+                match &source {
+                    Placeholder::Blank => true,
+                    Placeholder::Atom(source) => x == source,
+                }
+            )
+            .map(|pair| Path::new(&pair))
+            .collect();
         Query {
-            arrows,
-            sources,
-            targets,
+            pairs,
             source,
             target,
             queue
@@ -96,21 +122,24 @@ impl<T: Clone + Eq + Hash> Query<T> {
 }
 
 impl<T: Clone + Eq + Hash> Iterator for Query<T> {
-    type Item = ();
+    type Item = Path<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(path) = self.queue.pop() {
-            Some(())
-        } else {
-            None
+        let path = self.queue.pop()?;
+
+        for pair in &self.pairs {
+            if path.target() == pair.source {
+                self.queue.push(path.push(pair));
+            }
+        }
+
+        match &self.target {
+            Placeholder::Blank => Some(path),
+            Placeholder::Atom(target) => if *target == path.target() {
+                Some(path)
+            } else {
+                self.next()
+            },
         }
     }
 }
-
-
-
-
-// How to actually query?  Maintain HashSet of history, then check also possible paths of arrows.
-// We check each path in a loop, then push all extensions of the path into a queue.
-// If we have a path and we try all possible extensions, and they are all in the history, we can pop that path.
-// Do this until we've exhausted all possible paths (this could be infinite).

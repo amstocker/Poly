@@ -5,10 +5,20 @@ use super::constructor::*;
 
 
 
+// TODO: Arrow should really be a trait that is Constructible from Self
+//       and has a source and target.  It should also be able to produce
+//       an iterator of pairs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Arrow<T: Clone + Eq + Hash>(
     HashMap<Constructor<T>, Constructor<T>>
 );
+
+// TODO: Pair should implelement the Arrow trait
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pair<T: Clone> {
+    pub source: Constructor<T>,
+    pub target: Constructor<T>
+}
 
 impl<T: Clone + Eq + Hash, I> From<I> for Arrow<T>
 where
@@ -42,6 +52,16 @@ impl<'t, T: Clone + Eq + Hash + 't> Arrow<T> {
 
     pub fn target(&self) -> HashSet<Constructor<T>> {
         self.0.values().cloned().collect()
+    }
+
+    pub fn pairs<'a>(&'a self) -> impl Iterator<Item = Pair<T>> + 'a {
+        self.0.iter()
+            .map(|(x, y)|
+                Pair {
+                    source: x.clone(),
+                    target: y.clone()
+                }
+            )
     }
 }
 

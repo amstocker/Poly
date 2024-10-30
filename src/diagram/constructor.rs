@@ -18,7 +18,13 @@ impl<T: Clone> From<T> for Constructor<T> {
     }
 }
 
-pub trait Constructible<T, Ctx = ()> {
+impl<'t, T: Clone + 't> From<&'t T> for Constructor<T> {
+    fn from(value: &'t T) -> Self {
+        Constructor::atom(value)
+    }
+}
+
+pub trait Constructible<T> {
     fn new(t: &T) -> Self;
     fn add(&self, other: &Self) -> Self;
     fn mult(&self, other: &Self) -> Self;
