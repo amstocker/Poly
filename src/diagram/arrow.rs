@@ -1,6 +1,6 @@
 use std::hash::Hash;
 
-use im::{HashMap, HashSet};
+use im::HashMap;
 use super::constructor::*;
 
 
@@ -44,14 +44,6 @@ impl<'t, T: Clone + Eq + Hash + 't> Arrow<T> {
 
     pub fn apply(&self, x: &Constructor<T>) -> Option<Constructor<T>> {
         self.0.get(x).cloned()
-    }
-
-    pub fn source(&self) -> HashSet<Constructor<T>> {
-        self.0.keys().cloned().collect()
-    }
-
-    pub fn target(&self) -> HashSet<Constructor<T>> {
-        self.0.values().cloned().collect()
     }
 
     pub fn pairs<'a>(&'a self) -> impl Iterator<Item = Pair<T>> + 'a {

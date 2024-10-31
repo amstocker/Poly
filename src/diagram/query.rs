@@ -46,11 +46,12 @@ pub struct Path<T: Clone> {
 
 impl<T: Clone + std::fmt::Display> std::fmt::Display for Path<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut elems: Vec<_> = self.sequence.iter().map(|pair| pair.source.to_string()).collect();
-        if let Some(pair) = self.sequence.last() {
-            elems.push(pair.target.to_string());
-        }
-        write!(f, "{}", elems.join(" => "))
+        let elems = self.sequence.iter()
+            .map(|Pair { source, target }|
+                format!("({} => {})", source, target)
+            )
+            .collect::<Vec<_>>();
+        write!(f, "{}", elems.join(" -> "))
     }
 }
 
@@ -128,8 +129,21 @@ impl<T: Clone + Eq + Hash> Iterator for Query<T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let path = self.queue.pop()?;
+        
+        // TODO: This should be more nuanced.  If path.target() is a...
+        //  - Sum, then we should push any pair to the path if the source matches any of the summands
+        //  - Product, then we should push all possible compositions from pairs that match a (subset of?) the product.
+        //  - Sequence?
+        //  - Atom is easy.
+        match path.target() {
+            Constructor::Atom(_) => todo!(),
+            Constructor::Sum(vector) => todo!(),
+            Constructor::Product(vector) => todo!(),
+            Constructor::Sequence(vector) => unreachable!(),
+        }
 
         for pair in &self.pairs {
+
             if path.target() == pair.source {
                 self.queue.push(path.push(pair));
             }

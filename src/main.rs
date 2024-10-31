@@ -2,7 +2,7 @@ mod diagram_old;
 mod diagram;
 
 use chumsky::Parser;
-use diagram::{constructor::Constructor, parse::parser, query::Query};
+use diagram::{arrow::Arrow, constructor::Constructor, parse::parser, query::Query};
 
 
 fn main() {
@@ -13,6 +13,11 @@ fn main() {
                 println!("arrow {}", arrow);
             }
             println!("query: {}", query);
+
+            // Don't really want to do this, since arrows should be labeled.
+            let atoms = arrows.iter().map(Constructor::atom).collect::<Vec<_>>();
+            let total = Constructor::sum(atoms.iter()).build::<Arrow<_>>();
+            println!("{}", total);
 
             let query: Vec<_> = query.pairs().collect();
 

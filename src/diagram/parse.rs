@@ -36,7 +36,6 @@ fn atom<T: Clone + From<String>>() -> impl Parser<char, Constructor<T>, Error = 
         .map(|ident| Constructor::Atom(T::from(ident)))
 }
 
-// TODO: Really a more intuitive notation is to have Sum represented by `|` and product represented by `+` ...
 pub fn constructor<T: Clone + From<String>>() -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
     sum(product(atom()).or(atom()))
         .or(product(atom()))
