@@ -2,7 +2,7 @@ use std::{collections::BinaryHeap, fmt::Debug, hash::Hash};
 
 use im::Vector;
 
-use super::{arrow::{Arrow, Pair}, constructor::*};
+use super::{arrow::{Arrow, Transform}, constructor::*};
 
 
 
@@ -11,7 +11,7 @@ const PLACEHOLDER: &'static str = "_";
 // TODO: This should really just be isomorphic to "Option",
 //       then we should be able to parse any Constructor of Placeholders
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Placeholder<T: Clone> {
+pub enum Placeholder<T: Clone + Eq + Hash> {
     Blank,
     Atom(Constructor<T>)
 }
@@ -39,19 +39,19 @@ impl std::fmt::Display for Placeholder<String> {
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Path<T: Clone> {
+pub struct Path<T: Clone + Eq + Hash> {
     depth: usize,
-    sequence: Vector<Pair<T>>
+    sequence: Vector<Transform<T>>
 }
 
-impl<T: Clone + std::fmt::Display> std::fmt::Display for Path<T> {
+impl<T: Clone + Eq + Hash + std::fmt::Display> std::fmt::Display for Path<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let elems = self.sequence.iter()
-            .map(|Pair { source, target }|
-                format!("({} => {})", source, target)
+            .map(|Transform { source, target }|
+                format!("{} => {}", source, target)
             )
             .collect::<Vec<_>>();
-        write!(f, "{}", elems.join(" -> "))
+        write!(f, "[ {} ]", elems.join(", "))
     }
 }
 
@@ -75,13 +75,13 @@ impl<T: Clone + Eq + Hash> Path<T> {
         }
     }
 
-    pub fn new(pair: &Pair<T>) -> Path<T> {
-        Path::empty().push(pair)
+    pub fn new(transform: &Transform<T>) -> Path<T> {
+        Path::empty().push(transform)
     }
 
-    pub fn push(&self, pair: &Pair<T>) -> Path<T> {
+    pub fn push(&self, transform: &Transform<T>) -> Path<T> {
         let mut sequence = self.sequence.clone();
-        sequence.push_back(pair.clone());
+        sequence.push_back(transform.clone());
         Path {
             depth: self.depth + 1,
             sequence
@@ -95,7 +95,7 @@ impl<T: Clone + Eq + Hash> Path<T> {
 
 
 pub struct Query<T: Clone + Eq + Hash> {
-    pairs: Vec<Pair<T>>,
+    transforms: Vec<Transform<T>>,
     source: Placeholder<T>,
     target: Placeholder<T>,
     queue: BinaryHeap<Path<T>>
@@ -103,20 +103,20 @@ pub struct Query<T: Clone + Eq + Hash> {
 
 impl<T: Clone + Eq + Hash> Query<T> {
     pub fn new(arrows: Vec<Arrow<T>>, source: Placeholder<T>, target: Placeholder<T>) -> Query<T> {
-        let pairs: Vec<Pair<T>> = arrows.iter()
-            .flat_map(|arrow| arrow.pairs())
+        let transforms: Vec<Transform<T>> = arrows.iter()
+            .flat_map(|arrow| arrow.transforms())
             .collect();
-        let queue = pairs.iter()
-            .filter(|Pair { source: x, .. }|
+        let queue = transforms.iter()
+            .filter(|Transform { source: x, .. }|
                 match &source {
                     Placeholder::Blank => true,
                     Placeholder::Atom(source) => x == source,
                 }
             )
-            .map(|pair| Path::new(&pair))
+            .map(|transform| Path::new(&transform))
             .collect();
         Query {
-            pairs,
+            transforms,
             source,
             target,
             queue
@@ -137,16 +137,8 @@ impl<T: Clone + Eq + Hash> Iterator for Query<T> {
         //  - Atom is easy.
         match path.target() {
             Constructor::Atom(_) => todo!(),
-            Constructor::Sum(vector) => todo!(),
-            Constructor::Product(vector) => todo!(),
-            Constructor::Sequence(vector) => unreachable!(),
-        }
-
-        for pair in &self.pairs {
-
-            if path.target() == pair.source {
-                self.queue.push(path.push(pair));
-            }
+            Constructor::Sum(elems) => todo!(),
+            Constructor::Product(elems) => todo!()
         }
 
         match &self.target {

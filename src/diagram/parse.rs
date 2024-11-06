@@ -7,14 +7,14 @@ use super::constructor::Constructor;
 use super::query::Placeholder;
 
 
-fn sum<T: Clone>(inner: impl Parser<char, Constructor<T>, Error = Simple<char>>) -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
+fn sum<T: Clone + Eq + Hash>(inner: impl Parser<char, Constructor<T>, Error = Simple<char>>) -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
     inner
         .padded()
         .separated_by(just('+'))
         .map(|elems| Constructor::Sum(elems.into()))
 }
 
-fn product<T: Clone>(inner: impl Parser<char, Constructor<T>, Error = Simple<char>>) -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
+fn product<T: Clone + Eq + Hash>(inner: impl Parser<char, Constructor<T>, Error = Simple<char>>) -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
     inner
         .padded()
         .separated_by(just(','))
@@ -22,21 +22,13 @@ fn product<T: Clone>(inner: impl Parser<char, Constructor<T>, Error = Simple<cha
         .map(|elems| Constructor::Product(elems.into()))
 }
 
-fn sequence<T: Clone>(inner: impl Parser<char, Constructor<T>, Error = Simple<char>>) -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
-    inner
-        .padded()
-        .separated_by(just("->"))
-        .delimited_by(just('['), just(']'))
-        .map(|elems| Constructor::Sum(elems.into()))
-}
-
-fn atom<T: Clone + From<String>>() -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
+fn atom<T: Clone + Eq + Hash + From<String>>() -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
     text::ident()
         .padded()
         .map(|ident| Constructor::Atom(T::from(ident)))
 }
 
-pub fn constructor<T: Clone + From<String>>() -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
+pub fn constructor<T: Clone + Eq + Hash + From<String>>() -> impl Parser<char, Constructor<T>, Error = Simple<char>> {
     sum(product(atom()).or(atom()))
         .or(product(atom()))
         .or(atom())

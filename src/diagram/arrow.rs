@@ -14,8 +14,8 @@ pub struct Arrow<T: Clone + Eq + Hash>(
 );
 
 // TODO: Pair should implelement the Arrow trait
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Pair<T: Clone> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Transform<T: Clone + Eq + Hash> {
     pub source: Constructor<T>,
     pub target: Constructor<T>
 }
@@ -46,14 +46,29 @@ impl<'t, T: Clone + Eq + Hash + 't> Arrow<T> {
         self.0.get(x).cloned()
     }
 
-    pub fn pairs<'a>(&'a self) -> impl Iterator<Item = Pair<T>> + 'a {
+    pub fn transforms<'a>(&'a self) -> impl Iterator<Item = Transform<T>> + 'a {
         self.0.iter()
             .map(|(x, y)|
-                Pair {
+                Transform {
                     source: x.clone(),
                     target: y.clone()
                 }
             )
+    }
+
+    fn then(&self, other: &Self) -> Self {
+        let (Arrow(left), Arrow(right)) = (self, other);
+        let mut composition = left.clone();
+        'outer: for (x, y1) in left.iter() {
+            for (y2, z) in right.iter() {
+                if y1 == y2 {
+                    composition.insert(x.clone(), z.clone());
+                    continue 'outer;
+                }
+            }
+            composition.remove(x);
+        }
+        Arrow(composition)
     }
 }
 
@@ -86,21 +101,6 @@ impl<T: Clone + Eq + Hash> Constructible<Arrow<T>> for Arrow<T> {
         }
         Arrow(product)
     }
-
-    fn then(&self, other: &Self) -> Self {
-        let (Arrow(left), Arrow(right)) = (self, other);
-        let mut composition = left.clone();
-        'outer: for (x, y1) in left.iter() {
-            for (y2, z) in right.iter() {
-                if y1 == y2 {
-                    composition.insert(x.clone(), z.clone());
-                    continue 'outer;
-                }
-            }
-            composition.remove(x);
-        }
-        Arrow(composition)
-    }
 }
 
 
@@ -108,10 +108,10 @@ use std::fmt::{Display, Formatter, Result};
 
 impl<T: Clone + Eq + Hash + Display> Display for Arrow<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let pairs = self.0.iter()
+        let transforms = self.0.iter()
             .map(|(x, y)| format!("{} => {}", x.to_string(), y.to_string()))
             .collect::<Vec<_>>()
             .join(", ");
-        write!(f, "{{{}}}", pairs)
+        write!(f, "{{{}}}", transforms)
     }
 }
