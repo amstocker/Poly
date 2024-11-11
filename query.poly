@@ -1,3 +1,2 @@
-arrow { X => A + (A, B), Y + Z => B, W => C, A + C => E, B => F }
+{ X => A + (A, B), Y + Z => B, W => C, A + C => E, B => F }
 
-query { _ => E }

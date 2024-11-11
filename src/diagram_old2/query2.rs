@@ -26,14 +26,6 @@ impl<A: Clone + Eq> Ord for Path<A> {
 }
 
 impl<A: Clone + Eq> Path<A> {
-    pub fn empty() -> Path<A> {
-        Path(Vector::new())
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
     pub fn singleton(arrow: A) -> Path<A> {
         Path(Vector::from_iter([arrow]))
     }
@@ -42,17 +34,20 @@ impl<A: Clone + Eq> Path<A> {
         self.0.len()
     }
 
-    pub fn append<'a, T: 'a>(&'a self, arrow: &'a A) -> impl IntoIterator<Item = Path<A>> + 'a where A: Arrow<T> {
+    pub fn append<'a, T: 'a>(&'a self, arrow: &'a A) -> impl IntoIterator<Item = Path<A>> + 'a
+    where
+        A: Arrow<T>
+    {
         arrow.append_to(self)
     }
 
-    pub fn target(&self) -> Option<&A> {
-        self.0.last()
+    pub fn target<T>(&self) -> Option<T> where A: Arrow<T> {
+        self.0.last().map(|arrow| arrow.target())
     }
 
-    pub fn push(&self, arrow: A) -> Path<A> {
+    pub fn push(&self, arrow: &A) -> Path<A> {
         let mut arrows = self.0.clone();
-        arrows.push_back(arrow);
+        arrows.push_back(arrow.clone());
         Path(arrows)
     }
 }
@@ -72,17 +67,17 @@ where
     T: Eq,
     A: Arrow<T> + Clone + Eq
 {
-    pub fn new(
-        arrows: impl IntoIterator<Item = A> + Clone,
-        source: T,
-        target: T
-    ) -> Query<T, A> {
+    pub fn new(arrows: impl IntoIterator<Item = A>, source: T, target: T) -> Query<T, A> {
+        let arrows = arrows.into_iter()
+            .collect::<Vec<_>>();
+        let paths = arrows.iter()
+            .cloned()
+            .filter(|arrow| arrow.source() == source)
+            .map(|arrow| Path::singleton(arrow))
+            .collect();
         Query {
-            arrows: arrows.clone().into_iter().collect(),
-            paths: arrows.into_iter()
-                .filter(|arrow| arrow.source() == source)
-                .map(|arrow| Path::singleton(arrow))
-                .collect(),
+            arrows,
+            paths,
             target
         }
     }
@@ -90,21 +85,19 @@ where
 
 impl<T, A> Iterator for Query<T, A>
 where
-    T: Eq + std::fmt::Debug,
-    A: Arrow<T> + Clone + Eq + std::fmt::Debug
+    T: Eq,
+    A: Arrow<T> + Clone + Eq
 {
     type Item = Path<A>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        println!("{:?}", self);
         let path = self.paths.pop()?;
 
         for arrow in &self.arrows {
             self.paths.extend(path.append(arrow));
         }
-
-        if let Some(arrow) = path.target() {
-            if arrow.target() == self.target {
+        if let Some(target) = path.target() {
+            if target == self.target {
                 return Some(path);
             }
         }
