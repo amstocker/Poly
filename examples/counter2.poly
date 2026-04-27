@@ -1,0 +1,37 @@
+interface Layout
+    Column {
+        Item*
+    },
+    Button[label: String] {
+        Click
+    },
+    Text[text: String]
+
+interface Counter
+    Count[n: Int] {
+        Increment -> Count[n + 1],
+        (n > 0) Decrement -> Count[n - 1]
+    }
+
+interface Stream[T]
+    Head[t: T] { Next -> Stream[T] },
+    End
+
+# Not about this syntax?  But should mirror `Layout` above.
+interface Tree[T]
+    Node[t: T] { Children* -> Tree[T] },
+    End
+
+
+view App : Counter -> Layout*
+    Count[n] -> Column {
+        Item {
+            Text[n]
+        },
+        Item {
+            Button["+1"] { Click -> Increment } 
+        },
+        (n > 0) Item {
+            Button["-1"] { Click -> Decrement } 
+        },
+    }

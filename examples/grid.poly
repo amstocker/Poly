@@ -1,0 +1,7 @@
+interface Grid[Width: Int, Height: Int]
+    Cell[i: Int, j: Int] if (1 <= i <= Width) and (1 <= j <= Height) {
+        Left  if (i > 1)      -> Cell[i - 1, j],
+        Right if (i < Width)  -> Cell[i + 1, j],
+        Up    if (j > 1)      -> Cell[i, j - 1],
+        Down  if (j < Height) -> Cell[i, j + 1]
+    }

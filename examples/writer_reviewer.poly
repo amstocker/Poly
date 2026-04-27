@@ -1,0 +1,35 @@
+# The state machine defines the interaction protocol.
+# Each action carries typed data. Variables bound in actions
+# are in scope for subsequent states they transition to.
+
+interface System
+    Ready {
+        Prompt[topic: String] -> Writing[topic]
+    },
+    Writing[topic: String] {
+        Draft[content: String] -> Editing[topic, content]
+    },
+    Editing[topic: String, content: String] {
+        Edits[notes: String] -> Writing[topic],
+        Finish -> Done[content]
+    },
+    Done[content: String]
+
+# Agents attach to states. The state parameters are in scope
+# for the prompt template. The agent's response is parsed as
+# one of the available actions at that state.
+
+agent Writer : System.Writing
+    """
+    You are a writer. Write about the following topic:
+    {topic}
+    """
+
+agent Editor : System.Editing
+    """
+    You are an editor. Review the following draft:
+
+    {content}
+
+    Either provide edits to improve it, or finish if it's ready.
+    """

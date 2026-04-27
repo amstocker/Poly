@@ -1,0 +1,30 @@
+interface Layout
+    Vertical {
+        Content*,
+    },
+    Horizontal {
+        Content*,
+    },
+    Text[text: String],
+    Button[text: String] {
+        Click
+    }
+
+interface Counter
+    Count[n: Int] if (n >= 0) {
+        Increment            -> Count[n + 1],
+        Decrement if (n > 0) -> Count[n - 1]
+    }
+    
+view Widget : Counter -> Layout*
+    Count[n: Int] -> Vertical {
+        Text[n],
+        Button["+1"] {
+            Click -> Increment
+        },
+        Button["-1"] if (n > 0) {
+            Click -> Decrement
+        }
+    }
+    
+

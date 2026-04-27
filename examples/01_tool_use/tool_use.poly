@@ -1,0 +1,89 @@
+# 01 — Tool-using agent (single-turn Q&A)
+#
+# Mirrors `agent practice/01_tool_use_agent`. The smallest non-trivial
+# agentic system: one question in, one answer out, with the option to
+# call tools along the way.
+#
+# Used here as a forcing function to work out the surface syntax for
+# `tool` and `agent` blocks. Both have exploratory bits — flagged below.
+
+
+# ---------------------------------------------------------------------
+# Tools  (NEW BLOCK TYPE — exploratory)
+#
+# Polynomial reading: a tool is `Σ_call y^{result}`. Each declared
+# position takes typed inputs and produces a typed result. A `tool`
+# block is sugar for an interface that goes Idle -> Returned[result]
+# -> Idle; the ceremony is hidden because tools are stateless from
+# the agent's point of view.
+#
+# Open question: does `tool` deserve its own keyword, or is it just
+# `external interface` with a return-type convention? Keeping it
+# distinct for now so the engine can treat tools as deterministic,
+# retryable, and parallelizable without extra annotation.
+
+tool Calculator
+    Calculate[expression: String] -> result: Float
+
+tool Weather
+    GetWeather[location: String] -> report: String
+
+tool Clock
+    GetCurrentTime -> time: String
+
+
+# ---------------------------------------------------------------------
+# Agent loop
+#
+# One state per "phase of the conversation". For a single-turn agent
+# this is almost trivial: Working holds the question; Answer produces
+# the final response and lands in Done.
+
+interface Loop
+    Working[question: String] {
+        Answer[response: String] -> Done[response]
+    },
+    Done[response: String]
+
+
+# ---------------------------------------------------------------------
+# Agent  (EXTENDED — exploratory)
+#
+# Existing syntax (see writer_reviewer.poly):
+#     agent Name : Interface.State
+#         """ prompt template using {state_params} """
+#
+# Added here: a `tools:` field listing which tool interfaces this
+# agent may invoke. Each entry desugars into a partial defer from
+# the bound state (Loop.Working) into the named tool — so when the
+# LLM emits a tool call, the engine routes it through that defer
+# and feeds the tool's result back as a parameter on the next tick.
+#
+# Open question: is `tools:` worth its own field, or should it be
+# written as explicit defers below the agent block? The field is
+# more readable at this scale; explicit defers may scale better
+# once tools are conditional.
+
+agent Solver : Loop.Working
+    tools: [Calculator, Weather, Clock]
+    """
+    You are a helpful assistant. Answer the user's question:
+
+    {question}
+
+    Call a tool if you need information you don't have. Otherwise
+    answer directly.
+    """
+
+
+# ---------------------------------------------------------------------
+# Notes for the engine implementor (not part of the language)
+#
+# The engine should:
+#   1. Accept an initial Loop.Working[question = ...] from the host.
+#   2. Drive Solver: render the prompt, call the LLM, parse output as
+#      either an Answer action or a tool call.
+#   3. On Answer: transition to Done and return.
+#   4. On tool call: invoke the tool's host implementation, feed the
+#      result back into the next prompt render, loop.
+#   5. Emit one trace event per agent turn and per tool call.

@@ -1,0 +1,4 @@
+interface Graph
+    A { X -> A, Y -> B },
+    B { Z -> A }
+

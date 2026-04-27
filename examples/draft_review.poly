@@ -1,0 +1,47 @@
+# Draft-Review Loop
+#
+# Two LLM agents coordinate to produce a document:
+# - A Writer drafts and revises
+# - A Reviewer critiques or approves
+#
+# The system bounces between them until the Reviewer approves.
+
+schema Document
+    content: String,
+    title: String
+
+schema Feedback
+    comments: String
+
+# The writer's interface — what the writer sees and can do
+interface Writing
+    Draft[title: String] { Submit[doc: Document] },
+    Revise[doc: Document, feedback: Feedback] { Submit[doc: Document] }
+
+# The reviewer's interface — what the reviewer sees and can do
+interface Reviewing
+    Review[doc: Document] { Approve, Revise[feedback: Feedback] }
+
+# The overall workflow, defined as a dynamic interface
+interface DraftReview
+    Start { Begin[title: String] -> Drafting[title] },
+    Drafting[title: String] { Submit[doc: Document] -> InReview[doc] },
+    InReview[doc: Document] {
+        Approve -> Done[doc],
+        Revise[feedback: Feedback] -> Revising[doc, feedback]
+    },
+    Revising[doc: Document, feedback: Feedback] {
+        Submit[doc: Document] -> InReview[doc]
+    },
+    Done[doc: Document]
+
+# Wiring: DraftReview defers to Writing and Reviewing
+defer DraftToWriter : DraftReview -> Writing
+    Drafting[title] -> Draft[title] {
+        Submit[doc] <- Submit[doc]
+    },
+    InReview[doc] -> ???,
+    ...
+
+# This is where it gets awkward again — the defer must be total
+# but not all DraftReview states map to Writing states.

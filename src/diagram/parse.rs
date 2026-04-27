@@ -35,11 +35,11 @@ fn transform<T: Clone + From<String>>() -> impl Parser<char, Vec<Transform<T>>, 
         .then(constructor::<T>());
     constructors.map(|(sources, targets)| {
         let mut transforms = Vec::new();
-        for source in sources {
-            for target in targets.iter().cloned() {
+        for source in &sources {
+            for target in &targets {
                 transforms.push(Transform {
                     source: source.clone(),
-                    target
+                    target: target.clone()
                 });
             }
         }
@@ -47,7 +47,7 @@ fn transform<T: Clone + From<String>>() -> impl Parser<char, Vec<Transform<T>>, 
     })
 }
 
-fn arrow<T: Clone + From<String>>() -> impl Parser<char, Vec<Transform<T>>, Error = Simple<char>> {
+pub fn arrow<T: Clone + From<String>>() -> impl Parser<char, Vec<Transform<T>>, Error = Simple<char>> {
     let all_transforms = transform()
         .separated_by(just(','))
         .delimited_by(just('{'), just('}'));
@@ -60,8 +60,8 @@ fn arrow<T: Clone + From<String>>() -> impl Parser<char, Vec<Transform<T>>, Erro
     })
 }
 
-pub fn parser<T: Clone + From<String>>() -> impl Parser<char, Vec<Transform<T>>, Error = Simple<char>> {
+pub fn parser<T: Clone + From<String>>() -> impl Parser<char, Vec<Vec<Transform<T>>>, Error = Simple<char>> {
     arrow()
-    //    .separated_by(text::newline().repeated())
-    //    .then_ignore(end())
+        .separated_by(text::newline().repeated())
+        .then_ignore(end())
 }

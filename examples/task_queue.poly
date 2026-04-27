@@ -1,0 +1,38 @@
+# Task Queue System
+#
+# A user pushes tasks to a queue. Multiple worker agents
+# pull tasks, process them, and push results to a results queue.
+
+schema Task
+    id: Int,
+    description: String
+
+schema Result
+    task_id: Int,
+    output: String
+
+# The overall system from the user's perspective
+interface TaskQueue
+    Idle {
+        Push[task: Task] -> Idle,
+        Collect -> Done[results: List[Result]]
+    },
+    Done[results: List[Result]]
+
+# A single worker's lifecycle
+interface Worker
+    Waiting {
+        Assign[task: Task] -> Working[task]
+    },
+    Working[task: Task] {
+        Complete[result: Result] -> Waiting
+    }
+
+agent Worker : Worker.Working
+    """
+    Complete the following task:
+
+    Task #{task.id}: {task.description}
+
+    Produce a result for this task.
+    """

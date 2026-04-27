@@ -1,0 +1,16 @@
+interface Test
+    A { B, C },
+    E { F }
+
+interface Test2
+    W { X, Y, Z }
+
+defer TestDefer : Test -> Test2
+    A -> W {
+        X | Y -> B,
+        Z -> C
+    },
+    E -> W {
+        X | Y | Z -> F
+    }
+
