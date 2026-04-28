@@ -1,7 +1,11 @@
+schema Coordinate
+    x: Int,
+    y: Int
+
 interface Grid[Width: Int, Height: Int]
-    Cell[i: Int, j: Int] if (1 <= i <= Width) and (1 <= j <= Height) {
-        Left  if (i > 1)      -> Cell[i - 1, j],
-        Right if (i < Width)  -> Cell[i + 1, j],
-        Up    if (j > 1)      -> Cell[i, j - 1],
-        Down  if (j < Height) -> Cell[i, j + 1]
+    Cell[c: Coordinate] if (1 <= c.x <= Width) and (1 <= c.y <= Height) {
+        Left  if (c.x > 1)      -> Cell[Coordinate(c.x - 1, c.y)],
+        Right if (c.x < Width)  -> Cell[Coordinate(c.x + 1, c.y)],
+        Up    if (c.y > 1)      -> Cell[Coordinate(c.x, c.y - 1)],
+        Down  if (c.y < Height) -> Cell[Coordinate(c.x, c.y + 1)]
     }

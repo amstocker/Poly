@@ -5,8 +5,6 @@ mod engine;
 mod test;
 mod object;
 
-use chumsky::Parser;
-
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -14,6 +12,7 @@ fn main() {
         vec![
             "examples/implemented/test2.poly".to_string(),
             "examples/implemented/graph.poly".to_string(),
+            "examples/grid.poly".to_string(),
         ]
     } else {
         args
@@ -28,11 +27,10 @@ fn main() {
 }
 
 fn run(path: &str) {
-    let raw = std::fs::read_to_string(path).expect("could not read source file");
-    let src = engine::parse::strip_comments(&raw);
+    let src = std::fs::read_to_string(path).expect("could not read source file");
 
-    let decls = match engine::parse::file().parse(src) {
-        Ok(d) => d,
+    let eng = match engine::Engine::load(&src) {
+        Ok(e) => e,
         Err(errs) => {
             for e in errs {
                 eprintln!("parse error in {path}: {e:?}");
@@ -41,30 +39,33 @@ fn run(path: &str) {
         }
     };
 
-    let eng = engine::Engine::from_decls(decls);
-
     println!("=== Loaded from {path} ===");
+    for s in eng.schemas.values() {
+        println!("{}", eng.fmt_schema(s));
+    }
     for iface in eng.interfaces.values() {
-        println!("{iface}");
+        println!("{}", eng.fmt_interface(iface));
     }
     for d in &eng.defers {
-        println!("{d}");
+        println!("{}", eng.fmt_defer(d));
     }
     println!();
 
     println!("=== Query 1: explain each position ===");
-    for (iname, iface) in &eng.interfaces {
-        for pname in iface.positions.keys() {
-            print!("{}", eng.explain_position(iname, pname));
+    for (iname_sym, iface) in &eng.interfaces {
+        let iname = eng.resolve(*iname_sym).to_string();
+        for pos in &iface.positions {
+            let pname = eng.resolve(pos.name).to_string();
+            print!("{}", eng.explain_position(&iname, &pname));
             println!();
         }
     }
 
     let mut all_actions = std::collections::BTreeSet::new();
     for iface in eng.interfaces.values() {
-        for dirs in iface.positions.values() {
-            for d in dirs {
-                all_actions.insert(d.clone());
+        for pos in &iface.positions {
+            for dir in &pos.directions {
+                all_actions.insert(eng.resolve(dir.name).to_string());
             }
         }
     }

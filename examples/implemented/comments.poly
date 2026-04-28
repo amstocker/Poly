@@ -1,0 +1,9 @@
+# top-of-file comment
+# multi-line block at the start
+
+# a leading comment for the interface
+interface Sample  # trailing comment after the interface name
+    A { X, Y },   # trailing comment after a position entry
+    # comment between entries
+    B { Z }       # trailing comment after the last position
+# trailing comment at end of file
