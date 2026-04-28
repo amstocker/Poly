@@ -1,0 +1,155 @@
+use std::collections::BTreeMap;
+use super::Sym;
+
+// ============================================================================
+// Types and parameters
+// ============================================================================
+
+#[derive(Clone, Debug)]
+pub enum Type<T> {
+    Int,
+    Str,
+    Bool,
+    Named(T),
+}
+
+#[derive(Clone, Debug)]
+pub struct Param<T> {
+    pub name: T,
+    pub ty: Type<T>,
+}
+
+
+// ============================================================================
+// Expression AST
+// ============================================================================
+
+#[derive(Clone, Debug)]
+pub enum Expr<T> {
+    LitInt(i64),
+    LitStr(String),
+    LitBool(bool),
+    Var(T),
+    Field(Box<Expr<T>>, T),
+    BinOp(BinOp, Box<Expr<T>>, Box<Expr<T>>),
+    UnOp(UnOp, Box<Expr<T>>),
+    Construct(T, Vec<Expr<T>>),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum BinOp {
+    Add, Sub, Mul, Div, Mod,
+    Eq, Neq, Lt, Le, Gt, Ge,
+    And, Or,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum UnOp { Neg, Not }
+
+
+// ============================================================================
+// Schema declarations
+// ============================================================================
+
+#[derive(Clone, Debug)]
+pub struct Schema<T> {
+    pub name: T,
+    pub body: SchemaBody<T>,
+}
+
+#[derive(Clone, Debug)]
+pub enum SchemaBody<T> {
+    Record(Vec<Param<T>>),
+    Sum(Vec<Variant<T>>),
+}
+
+#[derive(Clone, Debug)]
+pub struct Variant<T> {
+    pub name: T,
+    pub params: Vec<Param<T>>,
+}
+
+
+// ============================================================================
+// Interface declarations
+// ============================================================================
+
+#[derive(Clone, Debug)]
+pub struct Interface<T> {
+    pub name: T,
+    pub params: Vec<Param<T>>,
+    pub positions: Vec<Position<T>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Position<T> {
+    pub name: T,
+    pub params: Vec<Param<T>>,
+    pub guard: Option<Expr<T>>,
+    pub directions: Vec<Direction<T>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Direction<T> {
+    pub name: T,
+    pub params: Vec<Param<T>>,
+    pub guard: Option<Expr<T>>,
+    pub transition: Option<Transition<T>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Transition<T> {
+    pub target_pos: T,
+    pub args: Vec<Expr<T>>,
+}
+
+impl<T> Interface<T> {
+    pub fn is_parameterized(&self) -> bool {
+        !self.params.is_empty()
+            || self.positions.iter().any(|p| {
+                !p.params.is_empty()
+                    || p.guard.is_some()
+                    || p.directions.iter().any(|d| !d.params.is_empty() || d.guard.is_some())
+            })
+    }
+}
+
+impl<T: PartialEq> Interface<T> {
+    pub fn position(&self, name: &T) -> Option<&Position<T>> {
+        self.positions.iter().find(|p| &p.name == name)
+    }
+}
+
+
+// ============================================================================
+// Defer declarations
+// ============================================================================
+
+#[derive(Clone, Debug)]
+pub struct Defer<T> {
+    pub name: T,
+    pub source: T,
+    pub target: T,
+    pub pos_map: BTreeMap<T, T>,
+    pub dir_map: BTreeMap<T, BTreeMap<T, T>>,
+}
+
+
+// ============================================================================
+// Top-level declaration
+// ============================================================================
+
+#[derive(Clone, Debug)]
+pub enum Decl<T> {
+    Interface(Interface<T>),
+    Defer(Defer<T>),
+    Schema(Schema<T>),
+}
+
+
+// ============================================================================
+// Defer map types (Sym-only convenience aliases)
+// ============================================================================
+
+pub type PosMap = BTreeMap<Sym, Sym>;
+pub type DirMap = BTreeMap<Sym, BTreeMap<Sym, Sym>>;
