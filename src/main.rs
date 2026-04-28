@@ -1,5 +1,6 @@
 mod engine;
 
+use engine::eval::{Bindings, Value};
 use engine::Engine;
 
 fn main() {
@@ -21,6 +22,7 @@ fn run_cli(args: &[String]) -> i32 {
         "explain" => cmd_explain(rest),
         "locate" => cmd_locate(rest),
         "actions" => cmd_actions(rest),
+        "step" => cmd_step(rest),
         "help" | "-h" | "--help" => {
             print_usage();
             0
@@ -47,6 +49,11 @@ fn print_usage() {
 
   poly actions <file> <interface> <position>
       List the actions available at <interface>.<position>.
+
+  poly step <file> <interface> <position> <action> [name=value ...]
+      Apply <action> at <interface>.<position> with the given parameter
+      bindings; print the resulting position and bindings. Values may be
+      integers, true/false, or quoted strings.
 
   poly help
       Print this message."
@@ -129,6 +136,53 @@ fn cmd_locate(args: &[String]) -> i32 {
         1
     } else {
         0
+    }
+}
+
+fn cmd_step(args: &[String]) -> i32 {
+    let (path, iface, pos, action, rest) = match args {
+        [p, i, q, a, rest @ ..] => (p, i, q, a, rest),
+        _ => {
+            eprintln!("usage: poly step <file> <interface> <position> <action> [name=value ...]");
+            return 1;
+        }
+    };
+    let Some(eng) = load(path) else { return 1 };
+    let mut bindings: Bindings = std::collections::BTreeMap::new();
+    for kv in rest {
+        let Some((k, v)) = kv.split_once('=') else {
+            eprintln!("expected name=value, got: {kv}");
+            return 1;
+        };
+        let Some(key) = eng.interner.find(k) else {
+            eprintln!("unknown parameter: {k}");
+            return 1;
+        };
+        bindings.insert(key, parse_value(v));
+    }
+    match eng.next_position(iface, pos, action, bindings) {
+        Ok(step) => {
+            print!("{}", eng.fmt_step(&step));
+            0
+        }
+        Err(err) => {
+            eprintln!("{}", eng.fmt_query_error(&err));
+            1
+        }
+    }
+}
+
+fn parse_value(s: &str) -> Value {
+    if let Ok(n) = s.parse::<i64>() {
+        return Value::Int(n);
+    }
+    match s {
+        "true" => Value::Bool(true),
+        "false" => Value::Bool(false),
+        _ => {
+            let trimmed = s.trim_matches('"');
+            Value::Str(trimmed.to_string())
+        }
     }
 }
 

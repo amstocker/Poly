@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
-use super::{Engine, Sym};
+use super::eval::{eval, eval_bool, Bindings, EvalError};
+use super::{BinOp, Engine, Expr, Param, Sym};
 
 // ============================================================================
 // Query result types
@@ -9,6 +10,18 @@ use super::{Engine, Sym};
 pub enum QueryError {
     UnknownInterface(String),
     UnknownPosition { interface: String, position: String },
+    UnknownAction { interface: String, position: String, action: String },
+    NoTransition { interface: String, position: String, action: String },
+    GuardFailed { interface: String, position: String, kind: GuardKind },
+    ArityMismatch { interface: String, position: String, expected: usize, got: usize },
+    EvalFailed(EvalError),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum GuardKind {
+    Position,
+    Direction,
+    TargetPosition,
 }
 
 #[derive(Clone, Debug)]
@@ -66,6 +79,18 @@ pub struct ActionLocations {
 pub struct ActionLocation {
     pub interface: Sym,
     pub position: Sym,
+    pub params: Vec<Param<Sym>>,
+    pub constraint: Option<Expr<Sym>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Step {
+    pub interface: Sym,
+    pub source_position: Sym,
+    pub source_bindings: Bindings,
+    pub action: Sym,
+    pub target_position: Sym,
+    pub target_bindings: Bindings,
 }
 
 
@@ -170,13 +195,126 @@ impl Engine {
         })
     }
 
+    pub fn next_position(
+        &self,
+        interface: &str,
+        position: &str,
+        action: &str,
+        bindings: Bindings,
+    ) -> Result<Step, QueryError> {
+        let iface_sym = self
+            .interner
+            .find(interface)
+            .ok_or_else(|| QueryError::UnknownInterface(interface.to_string()))?;
+        let iface = self
+            .interfaces
+            .get(&iface_sym)
+            .ok_or_else(|| QueryError::UnknownInterface(interface.to_string()))?;
+        let pos_sym = self.interner.find(position).ok_or_else(|| QueryError::UnknownPosition {
+            interface: interface.to_string(),
+            position: position.to_string(),
+        })?;
+        let pos = iface.position(&pos_sym).ok_or_else(|| QueryError::UnknownPosition {
+            interface: interface.to_string(),
+            position: position.to_string(),
+        })?;
+
+        if let Some(g) = &pos.guard {
+            if !eval_bool(g, &bindings).map_err(QueryError::EvalFailed)? {
+                return Err(QueryError::GuardFailed {
+                    interface: interface.to_string(),
+                    position: position.to_string(),
+                    kind: GuardKind::Position,
+                });
+            }
+        }
+
+        let action_sym = self.interner.find(action).ok_or_else(|| QueryError::UnknownAction {
+            interface: interface.to_string(),
+            position: position.to_string(),
+            action: action.to_string(),
+        })?;
+        let dir = pos
+            .directions
+            .iter()
+            .find(|d| d.name == action_sym)
+            .ok_or_else(|| QueryError::UnknownAction {
+                interface: interface.to_string(),
+                position: position.to_string(),
+                action: action.to_string(),
+            })?;
+
+        if let Some(g) = &dir.guard {
+            if !eval_bool(g, &bindings).map_err(QueryError::EvalFailed)? {
+                return Err(QueryError::GuardFailed {
+                    interface: interface.to_string(),
+                    position: position.to_string(),
+                    kind: GuardKind::Direction,
+                });
+            }
+        }
+
+        let trans = dir.transition.as_ref().ok_or_else(|| QueryError::NoTransition {
+            interface: interface.to_string(),
+            position: position.to_string(),
+            action: action.to_string(),
+        })?;
+
+        let target_pos = iface.position(&trans.target_pos).ok_or_else(|| {
+            QueryError::UnknownPosition {
+                interface: interface.to_string(),
+                position: self.resolve(trans.target_pos).to_string(),
+            }
+        })?;
+
+        if trans.args.len() != target_pos.params.len() {
+            return Err(QueryError::ArityMismatch {
+                interface: interface.to_string(),
+                position: self.resolve(trans.target_pos).to_string(),
+                expected: target_pos.params.len(),
+                got: trans.args.len(),
+            });
+        }
+
+        let mut target_bindings: Bindings = BTreeMap::new();
+        for (param, arg) in target_pos.params.iter().zip(trans.args.iter()) {
+            let v = eval(arg, &bindings).map_err(QueryError::EvalFailed)?;
+            target_bindings.insert(param.name, v);
+        }
+
+        if let Some(g) = &target_pos.guard {
+            if !eval_bool(g, &target_bindings).map_err(QueryError::EvalFailed)? {
+                return Err(QueryError::GuardFailed {
+                    interface: interface.to_string(),
+                    position: self.resolve(trans.target_pos).to_string(),
+                    kind: GuardKind::TargetPosition,
+                });
+            }
+        }
+
+        Ok(Step {
+            interface: iface_sym,
+            source_position: pos_sym,
+            source_bindings: bindings,
+            action: action_sym,
+            target_position: trans.target_pos,
+            target_bindings,
+        })
+    }
+
     pub fn locate_action(&self, action: &str) -> ActionLocations {
         let mut locations = Vec::new();
         if let Some(action_sym) = self.interner.find(action) {
             for (iname, iface) in &self.interfaces {
                 for pos in &iface.positions {
-                    if pos.directions.iter().any(|d| d.name == action_sym) {
-                        locations.push(ActionLocation { interface: *iname, position: pos.name });
+                    if let Some(dir) = pos.directions.iter().find(|d| d.name == action_sym) {
+                        let constraint = conjoin(pos.guard.as_ref(), dir.guard.as_ref());
+                        locations.push(ActionLocation {
+                            interface: *iname,
+                            position: pos.name,
+                            params: pos.params.clone(),
+                            constraint,
+                        });
                     }
                 }
             }
@@ -197,7 +335,43 @@ impl Engine {
             QueryError::UnknownPosition { interface, position } => {
                 format!("unknown position: {interface}.{position}")
             }
+            QueryError::UnknownAction { interface, position, action } => {
+                format!("unknown action: {interface}.{position}.{action}")
+            }
+            QueryError::NoTransition { interface, position, action } => {
+                format!("no transition for {interface}.{position}.{action}")
+            }
+            QueryError::GuardFailed { interface, position, kind } => {
+                let which = match kind {
+                    GuardKind::Position => "position guard",
+                    GuardKind::Direction => "direction guard",
+                    GuardKind::TargetPosition => "target position guard",
+                };
+                format!("{which} failed at {interface}.{position}")
+            }
+            QueryError::ArityMismatch { interface, position, expected, got } => {
+                format!(
+                    "arity mismatch at {interface}.{position}: expected {expected} arg(s), got {got}"
+                )
+            }
+            QueryError::EvalFailed(e) => format!("evaluation failed: {}", self.fmt_eval_error(e)),
         }
+    }
+
+    pub fn fmt_step(&self, step: &Step) -> String {
+        let src = format!(
+            "{}.{}{}",
+            self.resolve(step.interface),
+            self.resolve(step.source_position),
+            self.fmt_bindings(&step.source_bindings),
+        );
+        let tgt = format!(
+            "{}.{}{}",
+            self.resolve(step.interface),
+            self.resolve(step.target_position),
+            self.fmt_bindings(&step.target_bindings),
+        );
+        format!("{src} --{}--> {tgt}\n", self.resolve(step.action))
     }
 
     pub fn fmt_position_explanation(&self, e: &PositionExplanation) -> String {
@@ -276,11 +450,14 @@ impl Engine {
         }
         let mut out = format!("action `{}` is available at:\n", locs.action);
         for l in &locs.locations {
-            out.push_str(&format!(
-                "  {}.{}\n",
-                self.resolve(l.interface),
-                self.resolve(l.position),
-            ));
+            out.push_str(&format!("  {}.{}", self.resolve(l.interface), self.resolve(l.position)));
+            if !l.params.is_empty() {
+                out.push_str(&self.fmt_param_list(&l.params));
+            }
+            if let Some(c) = &l.constraint {
+                out.push_str(&format!(" if ({})", self.fmt_expr(c, 0)));
+            }
+            out.push('\n');
         }
         out
     }
@@ -290,6 +467,18 @@ impl Engine {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+fn conjoin(a: Option<&Expr<Sym>>, b: Option<&Expr<Sym>>) -> Option<Expr<Sym>> {
+    match (a, b) {
+        (None, None) => None,
+        (Some(e), None) | (None, Some(e)) => Some(e.clone()),
+        (Some(x), Some(y)) => Some(Expr::BinOp(
+            BinOp::And,
+            Box::new(x.clone()),
+            Box::new(y.clone()),
+        )),
+    }
+}
 
 fn group_by_value(m: &BTreeMap<Sym, Sym>) -> BTreeMap<Sym, Vec<Sym>> {
     let mut out: BTreeMap<Sym, Vec<Sym>> = BTreeMap::new();

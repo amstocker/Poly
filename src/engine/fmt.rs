@@ -165,11 +165,11 @@ impl Engine {
         out
     }
 
-    fn fmt_param(&self, p: &Param<Sym>) -> String {
+    pub fn fmt_param(&self, p: &Param<Sym>) -> String {
         format!("{}: {}", self.resolve(p.name), self.fmt_type(&p.ty))
     }
 
-    fn fmt_param_list(&self, params: &[Param<Sym>]) -> String {
+    pub fn fmt_param_list(&self, params: &[Param<Sym>]) -> String {
         let parts: Vec<String> = params.iter().map(|p| self.fmt_param(p)).collect();
         format!("[{}]", parts.join(", "))
     }

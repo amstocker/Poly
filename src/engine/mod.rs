@@ -1,3 +1,4 @@
+pub mod eval;
 pub mod fmt;
 pub mod interner;
 pub mod lower;
