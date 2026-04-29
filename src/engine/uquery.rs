@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use super::eval::{simplify, conjoin, Bindings};
 use super::facts::Facts;
 use super::*;
 
@@ -72,6 +73,10 @@ pub enum Goal {
         defer: Term, entry_idx: IndexSlot,
         target_dir: DirRefPat, source_dir: DirRefPat,
     },
+    /// A user-written constraint. The expression is added to the answer's
+    /// residual; goals never short-circuit on residuals during search — the
+    /// simplifier resolves them once at the end of the query.
+    Where(Expr<Sym>),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -110,6 +115,25 @@ pub type Subst = BTreeMap<VarId, Value>;
 #[derive(Clone, Debug)]
 pub struct Answer {
     pub subst: Subst,
+    /// Conjuncts left over after matching: position guards, direction guards,
+    /// and `Goal::Where` expressions. Resolved against the caller's env by the
+    /// simplifier before `run_query` returns. An empty residual means the
+    /// answer is unconditionally true.
+    pub residual: Vec<Expr<Sym>>,
+}
+
+impl Answer {
+    pub fn empty() -> Self {
+        Self { subst: Subst::default(), residual: Vec::new() }
+    }
+    pub fn with_subst(&self, subst: Subst) -> Self {
+        Self { subst, residual: self.residual.clone() }
+    }
+    pub fn push_residual(&self, e: Expr<Sym>) -> Self {
+        let mut next = self.clone();
+        next.residual.push(e);
+        next
+    }
 }
 
 
@@ -201,79 +225,95 @@ fn unify_dir_ref_pat(
 // Per-goal matching against a fact relation
 // ============================================================================
 
-fn match_goal(goal: &Goal, facts: &Facts, subst: &Subst) -> Vec<Subst> {
+fn match_goal(goal: &Goal, facts: &Facts, ans: &Answer) -> Vec<Answer> {
     match goal {
         Goal::Iface { iface, params } => facts
             .ifaces
             .iter()
             .filter_map(|f| {
-                let s = unify_term(iface, f.iface, subst)?;
-                unify_slot(params, Value::Params(f.params.clone()), &s)
+                let s = unify_term(iface, f.iface, &ans.subst)?;
+                let s = unify_slot(params, Value::Params(f.params.clone()), &s)?;
+                Some(ans.with_subst(s))
             })
             .collect(),
         Goal::IfaceInternal { internal, external } => facts
             .iface_internals
             .iter()
             .filter_map(|f| {
-                let s = unify_term(internal, f.internal, subst)?;
-                unify_term(external, f.external, &s)
+                let s = unify_term(internal, f.internal, &ans.subst)?;
+                let s = unify_term(external, f.external, &s)?;
+                Some(ans.with_subst(s))
             })
             .collect(),
         Goal::SchemaRecord { schema, fields } => facts
             .schema_records
             .iter()
             .filter_map(|f| {
-                let s = unify_term(schema, f.schema, subst)?;
-                unify_slot(fields, Value::Params(f.fields.clone()), &s)
+                let s = unify_term(schema, f.schema, &ans.subst)?;
+                let s = unify_slot(fields, Value::Params(f.fields.clone()), &s)?;
+                Some(ans.with_subst(s))
             })
             .collect(),
         Goal::SchemaSum { schema, variants } => facts
             .schema_sums
             .iter()
             .filter_map(|f| {
-                let s = unify_term(schema, f.schema, subst)?;
-                unify_slot(variants, Value::Variants(f.variants.clone()), &s)
+                let s = unify_term(schema, f.schema, &ans.subst)?;
+                let s = unify_slot(variants, Value::Variants(f.variants.clone()), &s)?;
+                Some(ans.with_subst(s))
             })
             .collect(),
         Goal::Position { iface, position, params, guard } => facts
             .positions
             .iter()
             .filter_map(|f| {
-                let s = unify_term(iface, f.iface, subst)?;
+                let s = unify_term(iface, f.iface, &ans.subst)?;
                 let s = unify_term(position, f.position, &s)?;
                 let s = unify_slot(params, Value::Params(f.params.clone()), &s)?;
-                unify_slot(guard, Value::Guard(f.guard.clone()), &s)
+                let s = unify_slot(guard, Value::Guard(f.guard.clone()), &s)?;
+                let mut next = ans.with_subst(s);
+                if let Some(g) = &f.guard {
+                    next.residual.push(g.clone());
+                }
+                Some(next)
             })
             .collect(),
         Goal::Direction { iface, position, action, params, guard } => facts
             .directions
             .iter()
             .filter_map(|f| {
-                let s = unify_term(iface, f.iface, subst)?;
+                let s = unify_term(iface, f.iface, &ans.subst)?;
                 let s = unify_term(position, f.position, &s)?;
                 let s = unify_term(action, f.action, &s)?;
                 let s = unify_slot(params, Value::Params(f.params.clone()), &s)?;
-                unify_slot(guard, Value::Guard(f.guard.clone()), &s)
+                let s = unify_slot(guard, Value::Guard(f.guard.clone()), &s)?;
+                let mut next = ans.with_subst(s);
+                if let Some(g) = &f.guard {
+                    next.residual.push(g.clone());
+                }
+                Some(next)
             })
             .collect(),
         Goal::Transition { iface, position, action, target_pos, args } => facts
             .transitions
             .iter()
             .filter_map(|f| {
-                let s = unify_term(iface, f.iface, subst)?;
+                let s = unify_term(iface, f.iface, &ans.subst)?;
                 let s = unify_term(position, f.position, &s)?;
                 let s = unify_term(action, f.action, &s)?;
                 let s = unify_term(target_pos, f.target_pos, &s)?;
-                unify_slot(args, Value::Args(f.args.clone()), &s)
+                let s = unify_slot(args, Value::Args(f.args.clone()), &s)?;
+                Some(ans.with_subst(s))
             })
             .collect(),
         Goal::Defer { defer, source, target } => facts
             .defers
             .iter()
             .filter_map(|f| {
-                let s = unify_term(defer, f.defer, subst)?;
+                let s = unify_term(defer, f.defer, &ans.subst)?;
                 let s = unify_term(source, f.source, &s)?;
-                unify_term(target, f.target, &s)
+                let s = unify_term(target, f.target, &s)?;
+                Some(ans.with_subst(s))
             })
             .collect(),
         Goal::DeferEntry {
@@ -283,25 +323,28 @@ fn match_goal(goal: &Goal, facts: &Facts, subst: &Subst) -> Vec<Subst> {
             .defer_entries
             .iter()
             .filter_map(|f| {
-                let s = unify_term(defer, f.defer, subst)?;
+                let s = unify_term(defer, f.defer, &ans.subst)?;
                 let s = unify_index_slot(entry_idx, f.entry_idx, &s)?;
                 let s = unify_term(source_pos, f.source_pos, &s)?;
                 let s = unify_slot(src_pattern, Value::Pattern(f.src_pattern.clone()), &s)?;
                 let s = unify_slot(src_guard, Value::Guard(f.src_guard.clone()), &s)?;
                 let s = unify_term(target_pos, f.target_pos, &s)?;
-                unify_slot(target_args, Value::Args(f.target_args.clone()), &s)
+                let s = unify_slot(target_args, Value::Args(f.target_args.clone()), &s)?;
+                Some(ans.with_subst(s))
             })
             .collect(),
         Goal::DeferDir { defer, entry_idx, target_dir, source_dir } => facts
             .defer_dirs
             .iter()
             .filter_map(|f| {
-                let s = unify_term(defer, f.defer, subst)?;
+                let s = unify_term(defer, f.defer, &ans.subst)?;
                 let s = unify_index_slot(entry_idx, f.entry_idx, &s)?;
                 let s = unify_dir_ref_pat(target_dir, &f.target_dir, &s)?;
-                unify_dir_ref_pat(source_dir, &f.source_dir, &s)
+                let s = unify_dir_ref_pat(source_dir, &f.source_dir, &s)?;
+                Some(ans.with_subst(s))
             })
             .collect(),
+        Goal::Where(expr) => vec![ans.push_residual(expr.clone())],
     }
 }
 
@@ -310,25 +353,43 @@ fn match_goal(goal: &Goal, facts: &Facts, subst: &Subst) -> Vec<Subst> {
 // Solver
 // ============================================================================
 
-fn solve(goals: &[Goal], facts: &Facts, subst: Subst) -> Vec<Subst> {
+fn solve(goals: &[Goal], facts: &Facts, ans: Answer) -> Vec<Answer> {
     let Some((first, rest)) = goals.split_first() else {
-        return vec![subst];
+        return vec![ans];
     };
     let mut out = Vec::new();
-    for s in match_goal(first, facts, &subst) {
-        out.extend(solve(rest, facts, s));
+    for next in match_goal(first, facts, &ans) {
+        out.extend(solve(rest, facts, next));
     }
     out
 }
 
-pub fn run_query(facts: &Facts, query: &Query) -> Vec<Answer> {
-    let mut answers = Vec::new();
+pub fn run_query(eng: &Engine, facts: &Facts, query: &Query, env: &Bindings) -> Vec<Answer> {
+    let mut out = Vec::new();
     for body in &query.bodies {
-        for s in solve(body, facts, Subst::default()) {
-            answers.push(Answer { subst: s });
+        for ans in solve(body, facts, Answer::empty()) {
+            if let Some(simplified) = simplify_answer(eng, &ans, env) {
+                out.push(simplified);
+            }
         }
     }
-    answers
+    out
+}
+
+/// Conjoin and simplify an answer's residual against `env`. Returns `None`
+/// when the residual reduces to `false` (the answer is dropped). When the
+/// residual reduces to `true`, the residual is cleared. Otherwise the
+/// simplified expression is kept as a single conjunct on the residual.
+fn simplify_answer(eng: &Engine, ans: &Answer, env: &Bindings) -> Option<Answer> {
+    let Some(joined) = conjoin(&ans.residual) else {
+        return Some(ans.clone());
+    };
+    let reduced = simplify(eng, &joined, env);
+    match reduced {
+        Expr::LitBool(true) => Some(Answer { subst: ans.subst.clone(), residual: Vec::new() }),
+        Expr::LitBool(false) => None,
+        other => Some(Answer { subst: ans.subst.clone(), residual: vec![other] }),
+    }
 }
 
 
@@ -377,7 +438,7 @@ mod tests {
                 guard: Slot::Anon,
             },
         ]);
-        run_query(facts, &q)
+        run_query(eng, facts, &q, &Bindings::default())
             .iter()
             .map(|a| (answer_sym(a, i_var), answer_sym(a, p_var)))
             .collect()
@@ -485,7 +546,7 @@ mod tests {
         ];
 
         let q = Query::or(vec![realization, defer_source_abs]);
-        run_query(facts, &q)
+        run_query(eng, facts, &q, &Bindings::default())
             .into_iter()
             .map(|a| {
                 let tp = answer_sym(&a, tgt_pos);
@@ -540,7 +601,7 @@ mod tests {
             params: Slot::Anon,
             guard: Slot::Anon,
         }]);
-        let actions: BTreeSet<Sym> = run_query(facts, &actions_q)
+        let actions: BTreeSet<Sym> = run_query(eng, facts, &actions_q, &Bindings::default())
             .iter()
             .map(|a| answer_sym(a, action_v))
             .collect();
@@ -562,7 +623,7 @@ mod tests {
                 target_args: Slot::Anon,
             },
         ]);
-        let forward: BTreeSet<Sym> = run_query(facts, &fwd_q)
+        let forward: BTreeSet<Sym> = run_query(eng, facts, &fwd_q, &Bindings::default())
             .iter()
             .map(|a| answer_sym(a, fd))
             .collect();
@@ -584,7 +645,7 @@ mod tests {
                 target_args: Slot::Anon,
             },
         ]);
-        let backward: BTreeSet<Sym> = run_query(facts, &bwd_q)
+        let backward: BTreeSet<Sym> = run_query(eng, facts, &bwd_q, &Bindings::default())
             .iter()
             .map(|a| answer_sym(a, bd))
             .collect();
@@ -663,5 +724,139 @@ mod tests {
             let n = locate_action_native(&eng, action);
             assert_eq!(q, n, "mismatch for action={action}");
         }
+    }
+
+    // -------------------------------------------------------------------
+    // Residuals + simplifier
+    //
+    // Counter has a position guard `n >= 0` on Count and a direction guard
+    // `n > 0` on Decrement. These exercise the three simplifier outcomes:
+    // symbolic residual (env empty), drop (residual reduces to false), and
+    // satisfied (residual reduces to true and is cleared).
+    // -------------------------------------------------------------------
+
+    fn decrement_query(eng: &Engine) -> Query {
+        let counter = eng.interner.find("Counter").unwrap();
+        let count = eng.interner.find("Count").unwrap();
+        let dec = eng.interner.find("Decrement").unwrap();
+        Query::single(vec![Goal::Direction {
+            iface: Term::Sym(counter),
+            position: Term::Sym(count),
+            action: Term::Sym(dec),
+            params: Slot::Anon,
+            guard: Slot::Anon,
+        }])
+    }
+
+    #[test]
+    fn decrement_residual_is_symbolic_with_empty_env() {
+        let eng = load("examples/counter.poly");
+        let facts = eng.facts();
+        let q = decrement_query(&eng);
+        let answers = run_query(&eng, &facts, &q, &Bindings::default());
+        assert_eq!(answers.len(), 1);
+        // Residual is `n > 0` — left symbolic because env is empty.
+        let n = eng.interner.find("n").unwrap();
+        assert_eq!(answers[0].residual.len(), 1);
+        match &answers[0].residual[0] {
+            Expr::BinOp(BinOp::Gt, l, r) => {
+                assert!(matches!(**l, Expr::Var(s) if s == n));
+                assert!(matches!(**r, Expr::LitInt(0)));
+            }
+            other => panic!("expected `n > 0`, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decrement_residual_collapses_to_true_when_satisfied() {
+        let eng = load("examples/counter.poly");
+        let facts = eng.facts();
+        let q = decrement_query(&eng);
+        let n = eng.interner.find("n").unwrap();
+        let mut env = Bindings::default();
+        env.insert(n, super::super::eval::Value::Int(3));
+        let answers = run_query(&eng, &facts, &q, &env);
+        assert_eq!(answers.len(), 1);
+        assert!(answers[0].residual.is_empty(), "residual should be cleared");
+    }
+
+    #[test]
+    fn decrement_answer_dropped_when_residual_false() {
+        let eng = load("examples/counter.poly");
+        let facts = eng.facts();
+        let q = decrement_query(&eng);
+        let n = eng.interner.find("n").unwrap();
+        let mut env = Bindings::default();
+        env.insert(n, super::super::eval::Value::Int(0));
+        let answers = run_query(&eng, &facts, &q, &env);
+        assert!(answers.is_empty(), "residual `0 > 0` is false; answer should be dropped");
+    }
+
+    #[test]
+    fn position_guard_also_lands_in_residual() {
+        // Querying Position alone (no direction) picks up the position guard.
+        let eng = load("examples/counter.poly");
+        let facts = eng.facts();
+        let counter = eng.interner.find("Counter").unwrap();
+        let count = eng.interner.find("Count").unwrap();
+        let q = Query::single(vec![Goal::Position {
+            iface: Term::Sym(counter),
+            position: Term::Sym(count),
+            params: Slot::Anon,
+            guard: Slot::Anon,
+        }]);
+        let answers = run_query(&eng, &facts, &q, &Bindings::default());
+        assert_eq!(answers.len(), 1);
+        // Residual is `n >= 0`.
+        match &answers[0].residual[..] {
+            [Expr::BinOp(BinOp::Ge, _, _)] => {}
+            other => panic!("expected single `n >= 0` residual, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn where_clause_adds_user_constraint() {
+        // Goal::Where lets the caller layer an extra constraint on top of any
+        // guards picked up automatically. Here we layer `n > 5` on top of
+        // Decrement's `n > 0` and resolve both with a concrete env.
+        let eng = load("examples/counter.poly");
+        let facts = eng.facts();
+        let counter = eng.interner.find("Counter").unwrap();
+        let count = eng.interner.find("Count").unwrap();
+        let dec = eng.interner.find("Decrement").unwrap();
+        let n = eng.interner.find("n").unwrap();
+
+        let q = Query::single(vec![
+            Goal::Direction {
+                iface: Term::Sym(counter),
+                position: Term::Sym(count),
+                action: Term::Sym(dec),
+                params: Slot::Anon,
+                guard: Slot::Anon,
+            },
+            Goal::Where(Expr::BinOp(
+                BinOp::Gt,
+                Box::new(Expr::Var(n)),
+                Box::new(Expr::LitInt(5)),
+            )),
+        ]);
+
+        // n=10: both `n > 0` and `n > 5` true → answer kept, residual cleared.
+        let mut env = Bindings::default();
+        env.insert(n, super::super::eval::Value::Int(10));
+        let answers = run_query(&eng, &facts, &q, &env);
+        assert_eq!(answers.len(), 1);
+        assert!(answers[0].residual.is_empty());
+
+        // n=3: `n > 0` true but `n > 5` false → answer dropped.
+        let mut env = Bindings::default();
+        env.insert(n, super::super::eval::Value::Int(3));
+        let answers = run_query(&eng, &facts, &q, &env);
+        assert!(answers.is_empty());
+
+        // No env: both stay symbolic, conjoined into a single residual.
+        let answers = run_query(&eng, &facts, &q, &Bindings::default());
+        assert_eq!(answers.len(), 1);
+        assert!(matches!(answers[0].residual[..], [Expr::BinOp(BinOp::And, _, _)]));
     }
 }

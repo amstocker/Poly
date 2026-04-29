@@ -3,6 +3,20 @@ use super::{BinOp, Engine, Expr, SchemaBody, Sym, UnOp};
 
 
 // ============================================================================
+// Partial evaluation (the "trivial simplifier" — constant folding only)
+// ============================================================================
+//
+// `simplify` walks an expression and reduces every subexpression that becomes
+// fully bound, leaving the rest symbolic. The result is always an `Expr<Sym>`:
+// a fully-reduced expression collapses to a literal, an unbindable expression
+// is returned unchanged, and a partially-bound expression is returned with the
+// reduced parts folded in place.
+//
+// This is enough to (a) collapse concrete-input residuals to true/false, and
+// (b) leave parameterized residuals symbolic for the query renderer to print.
+
+
+// ============================================================================
 // Values and bindings
 // ============================================================================
 
@@ -112,6 +126,98 @@ pub fn eval_bool(eng: &Engine, e: &Expr<Sym>, b: &Bindings) -> Result<bool, Eval
         Value::Bool(p) => Ok(p),
         _ => Err(EvalError::TypeMismatch { op: "guard" }),
     }
+}
+
+pub fn simplify(eng: &Engine, e: &Expr<Sym>, b: &Bindings) -> Expr<Sym> {
+    match e {
+        Expr::LitInt(_) | Expr::LitStr(_) | Expr::LitBool(_) => e.clone(),
+        Expr::Var(s) => match b.get(s) {
+            Some(v) => value_to_expr(eng, v).unwrap_or_else(|| e.clone()),
+            None => e.clone(),
+        },
+        Expr::UnOp(op, inner) => {
+            let inner_s = simplify(eng, inner, b);
+            if let Some(v) = expr_as_value(&inner_s) {
+                if let Ok(folded) = eval_unop(*op, v) {
+                    if let Some(ex) = value_to_expr(eng, &folded) {
+                        return ex;
+                    }
+                }
+            }
+            Expr::UnOp(*op, Box::new(inner_s))
+        }
+        Expr::BinOp(op, l, r) => {
+            let ls = simplify(eng, l, b);
+            let rs = simplify(eng, r, b);
+            if let (Some(lv), Some(rv)) = (expr_as_value(&ls), expr_as_value(&rs)) {
+                if let Ok(folded) = eval_binop(*op, lv, rv) {
+                    if let Some(ex) = value_to_expr(eng, &folded) {
+                        return ex;
+                    }
+                }
+            }
+            Expr::BinOp(*op, Box::new(ls), Box::new(rs))
+        }
+        Expr::Field(base, name) => {
+            let bs = simplify(eng, base, b);
+            if let Expr::Construct(schema, args) = &bs {
+                if let Some(s) = eng.schemas.get(schema) {
+                    if let SchemaBody::Record(params) = &s.body {
+                        if let Some(idx) = params.iter().position(|p| p.name == *name) {
+                            return args[idx].clone();
+                        }
+                    }
+                }
+            }
+            Expr::Field(Box::new(bs), *name)
+        }
+        Expr::Construct(name, args) => {
+            let args_s: Vec<_> = args.iter().map(|a| simplify(eng, a, b)).collect();
+            Expr::Construct(*name, args_s)
+        }
+    }
+}
+
+fn eval_unop(op: UnOp, v: Value) -> Result<Value, EvalError> {
+    match (op, v) {
+        (UnOp::Neg, Value::Int(n)) => Ok(Value::Int(-n)),
+        (UnOp::Not, Value::Bool(p)) => Ok(Value::Bool(!p)),
+        _ => Err(EvalError::TypeMismatch { op: "unary" }),
+    }
+}
+
+fn expr_as_value(e: &Expr<Sym>) -> Option<Value> {
+    match e {
+        Expr::LitInt(n) => Some(Value::Int(*n)),
+        Expr::LitBool(p) => Some(Value::Bool(*p)),
+        Expr::LitStr(s) => Some(Value::Str(s.clone())),
+        _ => None,
+    }
+}
+
+fn value_to_expr(eng: &Engine, v: &Value) -> Option<Expr<Sym>> {
+    match v {
+        Value::Int(n) => Some(Expr::LitInt(*n)),
+        Value::Bool(p) => Some(Expr::LitBool(*p)),
+        Value::Str(s) => Some(Expr::LitStr(s.clone())),
+        Value::Record { schema, fields } => {
+            let s = eng.schemas.get(schema)?;
+            let SchemaBody::Record(params) = &s.body else { return None };
+            let args: Option<Vec<Expr<Sym>>> = params
+                .iter()
+                .map(|p| fields.get(&p.name).and_then(|fv| value_to_expr(eng, fv)))
+                .collect();
+            Some(Expr::Construct(*schema, args?))
+        }
+    }
+}
+
+pub fn conjoin(parts: &[Expr<Sym>]) -> Option<Expr<Sym>> {
+    let mut iter = parts.iter().cloned();
+    let first = iter.next()?;
+    Some(iter.fold(first, |acc, e| {
+        Expr::BinOp(BinOp::And, Box::new(acc), Box::new(e))
+    }))
 }
 
 
