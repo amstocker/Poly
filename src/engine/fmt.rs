@@ -166,19 +166,19 @@ impl Engine {
         out
     }
 
-    fn fmt_pattern(&self, p: &Pattern<Sym>) -> String {
+    pub fn fmt_pattern(&self, p: &Pattern<Sym>) -> String {
         match p {
             Pattern::Wildcard => "_".to_string(),
             Pattern::Bind(s) => self.resolve(*s).to_string(),
         }
     }
 
-    fn fmt_pattern_list(&self, ps: &[Pattern<Sym>]) -> String {
+    pub fn fmt_pattern_list(&self, ps: &[Pattern<Sym>]) -> String {
         let parts: Vec<String> = ps.iter().map(|p| self.fmt_pattern(p)).collect();
         format!("[{}]", parts.join(", "))
     }
 
-    fn fmt_dir_ref(&self, r: &DirRef<Sym>) -> String {
+    pub fn fmt_dir_ref(&self, r: &DirRef<Sym>) -> String {
         match r {
             DirRef::Named(s) => self.resolve(*s).to_string(),
             DirRef::Abstract { src_pos, src_pattern, tgt_pos, tgt_args } => {

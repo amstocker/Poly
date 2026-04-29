@@ -1,7 +1,7 @@
 mod engine;
 
 use engine::eval::{Bindings, Value};
-use engine::Engine;
+use engine::{Engine, EngineError, SchemaBody};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -19,6 +19,7 @@ fn run_cli(args: &[String]) -> i32 {
     };
     match cmd {
         "show" => cmd_show(rest),
+        "facts" => cmd_facts(rest),
         "explain" => cmd_explain(rest),
         "locate" => cmd_locate(rest),
         "actions" => cmd_actions(rest),
@@ -40,6 +41,10 @@ fn print_usage() {
         "Usage:
   poly show <file>
       Print all schemas, interfaces, and defers in <file>.
+
+  poly facts <file>
+      Project <file> into the relation tuples used by the (in-progress)
+      query layer. One Datalog-style fact per line.
 
   poly explain <file> <interface> <position>
       Show what is determined elsewhere when <interface> is at <position>.
@@ -70,9 +75,15 @@ fn load(path: &str) -> Option<Engine> {
     };
     match Engine::load(&src) {
         Ok(e) => Some(e),
-        Err(errs) => {
+        Err(EngineError::Parse(errs)) => {
             for e in errs {
                 eprintln!("parse error in {path}: {e:?}");
+            }
+            None
+        }
+        Err(EngineError::Validate(msgs)) => {
+            for m in msgs {
+                eprintln!("validation error in {path}: {m}");
             }
             None
         }
@@ -97,6 +108,20 @@ fn cmd_show(args: &[String]) -> i32 {
     for d in &eng.defers {
         println!("{}", eng.fmt_defer(d));
     }
+    0
+}
+
+fn cmd_facts(args: &[String]) -> i32 {
+    let path = match args {
+        [p] => p,
+        _ => {
+            eprintln!("usage: poly facts <file>");
+            return 1;
+        }
+    };
+    let Some(eng) = load(path) else { return 1 };
+    let facts = eng.facts();
+    print!("{}", eng.fmt_facts(&facts));
     0
 }
 
@@ -158,7 +183,13 @@ fn cmd_step(args: &[String]) -> i32 {
             eprintln!("unknown parameter: {k}");
             return 1;
         };
-        bindings.insert(key, parse_value(v));
+        match parse_value(&eng, v) {
+            Ok(val) => { bindings.insert(key, val); }
+            Err(msg) => {
+                eprintln!("could not parse value for {k}: {msg}");
+                return 1;
+            }
+        }
     }
     match eng.next_position(iface, pos, action, bindings) {
         Ok(step) => {
@@ -172,18 +203,99 @@ fn cmd_step(args: &[String]) -> i32 {
     }
 }
 
-fn parse_value(s: &str) -> Value {
+fn parse_value(eng: &Engine, s: &str) -> Result<Value, String> {
+    let s = s.trim();
     if let Ok(n) = s.parse::<i64>() {
-        return Value::Int(n);
+        return Ok(Value::Int(n));
     }
-    match s {
-        "true" => Value::Bool(true),
-        "false" => Value::Bool(false),
-        _ => {
-            let trimmed = s.trim_matches('"');
-            Value::Str(trimmed.to_string())
+    if s == "true" {
+        return Ok(Value::Bool(true));
+    }
+    if s == "false" {
+        return Ok(Value::Bool(false));
+    }
+    if let Some((name, args_str)) = parse_construct_head(s) {
+        let key = eng
+            .interner
+            .find(name)
+            .ok_or_else(|| format!("unknown schema: {name}"))?;
+        let schema = eng
+            .schemas
+            .get(&key)
+            .ok_or_else(|| format!("unknown schema: {name}"))?;
+        let params = match &schema.body {
+            SchemaBody::Record(ps) => ps,
+            SchemaBody::Sum(_) => {
+                return Err(format!("sum constructors not yet supported: {name}"));
+            }
+        };
+        let arg_strs = split_top_commas(args_str)?;
+        if arg_strs.len() != params.len() {
+            return Err(format!(
+                "{name} expects {} arg(s), got {}",
+                params.len(),
+                arg_strs.len(),
+            ));
+        }
+        let mut fields: std::collections::BTreeMap<engine::Sym, Value> =
+            std::collections::BTreeMap::new();
+        for (p, arg) in params.iter().zip(arg_strs.iter()) {
+            fields.insert(p.name, parse_value(eng, arg)?);
+        }
+        return Ok(Value::Record { schema: key, fields });
+    }
+    let trimmed = s.trim_matches('"');
+    Ok(Value::Str(trimmed.to_string()))
+}
+
+fn parse_construct_head(s: &str) -> Option<(&str, &str)> {
+    let open = s.find('(')?;
+    if !s.ends_with(')') {
+        return None;
+    }
+    let name = s[..open].trim();
+    if name.is_empty() {
+        return None;
+    }
+    if !name.chars().next().unwrap().is_alphabetic() {
+        return None;
+    }
+    if !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return None;
+    }
+    let inner = &s[open + 1..s.len() - 1];
+    Some((name, inner))
+}
+
+fn split_top_commas(s: &str) -> Result<Vec<&str>, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth < 0 {
+                    return Err("unbalanced parentheses".to_string());
+                }
+            }
+            ',' if depth == 0 => {
+                out.push(s[start..i].trim());
+                start = i + c.len_utf8();
+            }
+            _ => {}
         }
     }
+    if depth != 0 {
+        return Err("unbalanced parentheses".to_string());
+    }
+    out.push(s[start..].trim());
+    Ok(out)
 }
 
 fn cmd_actions(args: &[String]) -> i32 {
