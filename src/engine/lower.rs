@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use super::*;
 
 pub fn lower_decls(raw: Vec<Decl<String>>, interner: &mut Interner) -> Vec<Decl<Sym>> {
@@ -96,26 +95,56 @@ fn lower_interface(i: Interface<String>, interner: &mut Interner) -> Interface<S
     }
 }
 
+fn lower_pattern(p: Pattern<String>, interner: &mut Interner) -> Pattern<Sym> {
+    match p {
+        Pattern::Wildcard => Pattern::Wildcard,
+        Pattern::Bind(name) => Pattern::Bind(interner.intern(&name)),
+    }
+}
+
+fn lower_dir_ref(r: DirRef<String>, interner: &mut Interner) -> DirRef<Sym> {
+    match r {
+        DirRef::Named(name) => DirRef::Named(interner.intern(&name)),
+        DirRef::Abstract { src_pos, src_pattern, tgt_pos, tgt_args } => DirRef::Abstract {
+            src_pos: interner.intern(&src_pos),
+            src_pattern: src_pattern
+                .into_iter()
+                .map(|p| lower_pattern(p, interner))
+                .collect(),
+            tgt_pos: interner.intern(&tgt_pos),
+            tgt_args: tgt_args.into_iter().map(|e| lower_expr(e, interner)).collect(),
+        },
+    }
+}
+
+fn lower_dir_mapping(m: DirMapping<String>, interner: &mut Interner) -> DirMapping<Sym> {
+    DirMapping {
+        target_dir: lower_dir_ref(m.target_dir, interner),
+        source_dir: lower_dir_ref(m.source_dir, interner),
+    }
+}
+
+fn lower_defer_entry(e: DeferEntry<String>, interner: &mut Interner) -> DeferEntry<Sym> {
+    DeferEntry {
+        source_pos: interner.intern(&e.source_pos),
+        source_pattern: e
+            .source_pattern
+            .into_iter()
+            .map(|p| lower_pattern(p, interner))
+            .collect(),
+        source_guard: e.source_guard.map(|g| lower_expr(g, interner)),
+        target_pos: interner.intern(&e.target_pos),
+        target_args: e.target_args.into_iter().map(|a| lower_expr(a, interner)).collect(),
+        directions: e.directions.into_iter().map(|m| lower_dir_mapping(m, interner)).collect(),
+    }
+}
+
 fn lower_defer(d: Defer<String>, interner: &mut Interner) -> Defer<Sym> {
-    let mut pos_map = BTreeMap::new();
-    for (k, v) in d.pos_map {
-        pos_map.insert(interner.intern(&k), interner.intern(&v));
-    }
-    let mut dir_map: BTreeMap<Sym, BTreeMap<Sym, Sym>> = BTreeMap::new();
-    for (k, inner) in d.dir_map {
-        let k_sym = interner.intern(&k);
-        let mut new_inner = BTreeMap::new();
-        for (tk, tv) in inner {
-            new_inner.insert(interner.intern(&tk), interner.intern(&tv));
-        }
-        dir_map.insert(k_sym, new_inner);
-    }
     Defer {
         name: interner.intern(&d.name),
         source: interner.intern(&d.source),
         target: interner.intern(&d.target),
-        pos_map,
-        dir_map,
+        entries: d.entries.into_iter().map(|e| lower_defer_entry(e, interner)).collect(),
     }
 }
 

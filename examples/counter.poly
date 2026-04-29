@@ -3,3 +3,11 @@ interface Counter
         Increment -> Count[n + 1],
         Decrement if (n > 0) -> Count[n - 1]
     }
+
+interface Button
+    { Press }
+
+defer SetTo10 : Counter::Internal -> Button
+    Count[_] -> {
+        Press -> Count[_] => Count[10]
+    }

@@ -1,6 +1,3 @@
-use std::collections::BTreeMap;
-use super::Sym;
-
 // ============================================================================
 // Types and parameters
 // ============================================================================
@@ -130,8 +127,40 @@ pub struct Defer<T> {
     pub name: T,
     pub source: T,
     pub target: T,
-    pub pos_map: BTreeMap<T, T>,
-    pub dir_map: BTreeMap<T, BTreeMap<T, T>>,
+    pub entries: Vec<DeferEntry<T>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct DeferEntry<T> {
+    pub source_pos: T,
+    pub source_pattern: Vec<Pattern<T>>,
+    pub source_guard: Option<Expr<T>>,
+    pub target_pos: T,
+    pub target_args: Vec<Expr<T>>,
+    pub directions: Vec<DirMapping<T>>,
+}
+
+#[derive(Clone, Debug)]
+pub enum Pattern<T> {
+    Wildcard,
+    Bind(T),
+}
+
+#[derive(Clone, Debug)]
+pub struct DirMapping<T> {
+    pub target_dir: DirRef<T>,
+    pub source_dir: DirRef<T>,
+}
+
+#[derive(Clone, Debug)]
+pub enum DirRef<T> {
+    Named(T),
+    Abstract {
+        src_pos: T,
+        src_pattern: Vec<Pattern<T>>,
+        tgt_pos: T,
+        tgt_args: Vec<Expr<T>>,
+    },
 }
 
 
@@ -147,9 +176,3 @@ pub enum Decl<T> {
 }
 
 
-// ============================================================================
-// Defer map types (Sym-only convenience aliases)
-// ============================================================================
-
-pub type PosMap = BTreeMap<Sym, Sym>;
-pub type DirMap = BTreeMap<Sym, BTreeMap<Sym, Sym>>;

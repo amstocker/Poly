@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use super::eval::{eval, eval_bool, Bindings, EvalError};
-use super::{BinOp, Engine, Expr, Param, Sym};
+use super::{BinOp, DirRef, Engine, Expr, Param, Sym};
 
 // ============================================================================
 // Query result types
@@ -127,54 +127,56 @@ impl Engine {
 
         for d in &self.defers {
             if d.source == iface_sym {
-                if let Some(&tgt) = d.pos_map.get(&pos_sym) {
-                    let action_groups = d
-                        .dir_map
-                        .get(&pos_sym)
-                        .map(|dm| {
-                            group_by_value(dm)
-                                .into_iter()
-                                .map(|(src, tgts)| ActionGroup {
-                                    source_action: src,
-                                    target_actions: tgts.into_iter().collect(),
-                                })
-                                .collect()
+                for entry in &d.entries {
+                    if entry.source_pos != pos_sym {
+                        continue;
+                    }
+                    let mut grouped: BTreeMap<Sym, Vec<Sym>> = BTreeMap::new();
+                    for m in &entry.directions {
+                        if let (Some(src), Some(tgt)) =
+                            (named_dir(&m.source_dir), named_dir(&m.target_dir))
+                        {
+                            grouped.entry(src).or_default().push(tgt);
+                        }
+                    }
+                    let action_groups = grouped
+                        .into_iter()
+                        .map(|(src, tgts)| ActionGroup {
+                            source_action: src,
+                            target_actions: tgts,
                         })
-                        .unwrap_or_default();
+                        .collect();
                     forward.push(ForwardLink {
                         defer: d.name,
                         source: d.source,
                         target: d.target,
-                        target_pos: tgt,
+                        target_pos: entry.target_pos,
                         action_groups,
                     });
                 }
             }
             if d.target == iface_sym {
-                let preimage_syms: Vec<Sym> = d
-                    .pos_map
+                let preimage: Vec<PreimageEntry> = d
+                    .entries
                     .iter()
-                    .filter_map(|(s, t)| if *t == pos_sym { Some(*s) } else { None })
-                    .collect();
-                if !preimage_syms.is_empty() {
-                    let preimage = preimage_syms
-                        .into_iter()
-                        .map(|s| {
-                            let correspondences = d
-                                .dir_map
-                                .get(&s)
-                                .map(|dm| {
-                                    dm.iter()
-                                        .map(|(t, src)| ActionCorrespondence {
-                                            target_action: *t,
-                                            source_action: *src,
-                                        })
-                                        .collect()
+                    .filter(|e| e.target_pos == pos_sym)
+                    .map(|e| {
+                        let correspondences = e
+                            .directions
+                            .iter()
+                            .filter_map(|m| {
+                                let tgt = named_dir(&m.target_dir)?;
+                                let src = named_dir(&m.source_dir)?;
+                                Some(ActionCorrespondence {
+                                    target_action: tgt,
+                                    source_action: src,
                                 })
-                                .unwrap_or_default();
-                            PreimageEntry { source_pos: s, correspondences }
-                        })
-                        .collect();
+                            })
+                            .collect();
+                        PreimageEntry { source_pos: e.source_pos, correspondences }
+                    })
+                    .collect();
+                if !preimage.is_empty() {
                     backward.push(BackwardLink {
                         defer: d.name,
                         source: d.source,
@@ -254,39 +256,23 @@ impl Engine {
             }
         }
 
-        let trans = dir.transition.as_ref().ok_or_else(|| QueryError::NoTransition {
-            interface: interface.to_string(),
-            position: position.to_string(),
-            action: action.to_string(),
-        })?;
-
-        let target_pos = iface.position(&trans.target_pos).ok_or_else(|| {
+        let (target_pos_sym, target_bindings) = if let Some(trans) = &dir.transition {
+            self.apply_transition(interface, &bindings, &trans.target_pos, &trans.args)?
+        } else {
+            self.apply_realization(interface, position, action, iface_sym, pos_sym, action_sym, &bindings)?
+        };
+        let target_pos = iface.position(&target_pos_sym).ok_or_else(|| {
             QueryError::UnknownPosition {
                 interface: interface.to_string(),
-                position: self.resolve(trans.target_pos).to_string(),
+                position: self.resolve(target_pos_sym).to_string(),
             }
         })?;
-
-        if trans.args.len() != target_pos.params.len() {
-            return Err(QueryError::ArityMismatch {
-                interface: interface.to_string(),
-                position: self.resolve(trans.target_pos).to_string(),
-                expected: target_pos.params.len(),
-                got: trans.args.len(),
-            });
-        }
-
-        let mut target_bindings: Bindings = BTreeMap::new();
-        for (param, arg) in target_pos.params.iter().zip(trans.args.iter()) {
-            let v = eval(arg, &bindings).map_err(QueryError::EvalFailed)?;
-            target_bindings.insert(param.name, v);
-        }
 
         if let Some(g) = &target_pos.guard {
             if !eval_bool(g, &target_bindings).map_err(QueryError::EvalFailed)? {
                 return Err(QueryError::GuardFailed {
                     interface: interface.to_string(),
-                    position: self.resolve(trans.target_pos).to_string(),
+                    position: self.resolve(target_pos_sym).to_string(),
                     kind: GuardKind::TargetPosition,
                 });
             }
@@ -297,9 +283,74 @@ impl Engine {
             source_position: pos_sym,
             source_bindings: bindings,
             action: action_sym,
-            target_position: trans.target_pos,
+            target_position: target_pos_sym,
             target_bindings,
         })
+    }
+
+    fn apply_transition(
+        &self,
+        interface: &str,
+        bindings: &Bindings,
+        target_pos: &Sym,
+        args: &[Expr<Sym>],
+    ) -> Result<(Sym, Bindings), QueryError> {
+        let iface = self.interfaces.get(&self.interner.find(interface).unwrap()).unwrap();
+        let tgt_pos = iface.position(target_pos).ok_or_else(|| QueryError::UnknownPosition {
+            interface: interface.to_string(),
+            position: self.resolve(*target_pos).to_string(),
+        })?;
+        if args.len() != tgt_pos.params.len() {
+            return Err(QueryError::ArityMismatch {
+                interface: interface.to_string(),
+                position: self.resolve(*target_pos).to_string(),
+                expected: tgt_pos.params.len(),
+                got: args.len(),
+            });
+        }
+        let mut new_bindings: Bindings = BTreeMap::new();
+        for (param, arg) in tgt_pos.params.iter().zip(args.iter()) {
+            let v = eval(arg, bindings).map_err(QueryError::EvalFailed)?;
+            new_bindings.insert(param.name, v);
+        }
+        Ok((*target_pos, new_bindings))
+    }
+
+    fn apply_realization(
+        &self,
+        interface: &str,
+        _position: &str,
+        _action: &str,
+        iface_sym: Sym,
+        pos_sym: Sym,
+        action_sym: Sym,
+        bindings: &Bindings,
+    ) -> Result<(Sym, Bindings), QueryError> {
+        let internal_name = format!("{interface}::Internal");
+        for d in &self.defers {
+            if d.target != iface_sym {
+                continue;
+            }
+            if self.resolve(d.source) != internal_name {
+                continue;
+            }
+            for entry in &d.entries {
+                if entry.target_pos != pos_sym {
+                    continue;
+                }
+                for m in &entry.directions {
+                    if let DirRef::Named(name) = m.target_dir {
+                        if name != action_sym {
+                            continue;
+                        }
+                        if let DirRef::Abstract { tgt_pos, tgt_args, .. } = &m.source_dir {
+                            return self.apply_transition(interface, bindings, tgt_pos, tgt_args);
+                        }
+                    }
+                }
+            }
+        }
+        Ok((pos_sym, bindings.clone()))
     }
 
     pub fn locate_action(&self, action: &str) -> ActionLocations {
@@ -468,6 +519,13 @@ impl Engine {
 // Helpers
 // ============================================================================
 
+fn named_dir(r: &DirRef<Sym>) -> Option<Sym> {
+    match r {
+        DirRef::Named(s) => Some(*s),
+        DirRef::Abstract { .. } => None,
+    }
+}
+
 fn conjoin(a: Option<&Expr<Sym>>, b: Option<&Expr<Sym>>) -> Option<Expr<Sym>> {
     match (a, b) {
         (None, None) => None,
@@ -478,14 +536,6 @@ fn conjoin(a: Option<&Expr<Sym>>, b: Option<&Expr<Sym>>) -> Option<Expr<Sym>> {
             Box::new(y.clone()),
         )),
     }
-}
-
-fn group_by_value(m: &BTreeMap<Sym, Sym>) -> BTreeMap<Sym, Vec<Sym>> {
-    let mut out: BTreeMap<Sym, Vec<Sym>> = BTreeMap::new();
-    for (k, v) in m {
-        out.entry(*v).or_default().push(*k);
-    }
-    out
 }
 
 fn brace_set(items: &[&str]) -> String {

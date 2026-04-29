@@ -66,11 +66,46 @@ impl Engine {
         if !iface.params.is_empty() {
             out.push_str(&self.fmt_param_list(&iface.params));
         }
+        if let Some(pos) = self.implicit_single_state(iface) {
+            if pos.directions.is_empty() {
+                return out;
+            }
+            let names: Vec<&str> = pos.directions.iter().map(|d| self.resolve(d.name)).collect();
+            let all_simple = pos
+                .directions
+                .iter()
+                .all(|d| d.params.is_empty() && d.guard.is_none() && d.transition.is_none());
+            if all_simple {
+                out.push_str(&format!("\n    {{ {} }}", names.join(", ")));
+            } else {
+                out.push_str("\n    {");
+                for (i, dir) in pos.directions.iter().enumerate() {
+                    let sep = if i + 1 < pos.directions.len() { "," } else { "" };
+                    out.push_str(&format!("\n        {}{}", self.fmt_direction(dir), sep));
+                }
+                out.push_str("\n    }");
+            }
+            return out;
+        }
         for (i, pos) in iface.positions.iter().enumerate() {
             let sep = if i + 1 < iface.positions.len() { "," } else { "" };
             out.push_str(&format!("\n    {}{}", self.fmt_position(pos), sep));
         }
         out
+    }
+
+    fn implicit_single_state<'a>(&self, iface: &'a Interface<Sym>) -> Option<&'a Position<Sym>> {
+        if iface.positions.len() != 1 {
+            return None;
+        }
+        let pos = &iface.positions[0];
+        if pos.name != iface.name {
+            return None;
+        }
+        if !pos.params.is_empty() || pos.guard.is_some() {
+            return None;
+        }
+        Some(pos)
     }
 
     pub fn fmt_defer(&self, d: &Defer<Sym>) -> String {
@@ -80,37 +115,86 @@ impl Engine {
             self.resolve(d.source),
             self.resolve(d.target),
         );
-        for (i, src_pos) in d.pos_map.keys().enumerate() {
-            let tgt_pos = &d.pos_map[src_pos];
-            let body = match d.dir_map.get(src_pos) {
-                Some(map) if !map.is_empty() => {
-                    use std::collections::BTreeMap;
-                    let mut grouped: BTreeMap<Sym, Vec<Sym>> = BTreeMap::new();
-                    for (tgt_dir, src_dir) in map {
-                        grouped.entry(*src_dir).or_default().push(*tgt_dir);
-                    }
-                    let lines: Vec<String> = grouped
-                        .iter()
-                        .map(|(src_dir, tgt_dirs)| {
-                            let parts: Vec<&str> =
-                                tgt_dirs.iter().map(|s| self.resolve(*s)).collect();
-                            format!("        {} -> {}", parts.join(" | "), self.resolve(*src_dir))
-                        })
-                        .collect();
-                    format!(" {{\n{}\n    }}", lines.join(",\n"))
-                }
-                _ => " {}".to_string(),
-            };
-            let sep = if i + 1 < d.pos_map.len() { "," } else { "" };
-            out.push_str(&format!(
-                "\n    {} -> {}{}{}",
-                self.resolve(*src_pos),
-                self.resolve(*tgt_pos),
-                body,
-                sep,
-            ));
+        for (i, entry) in d.entries.iter().enumerate() {
+            let sep = if i + 1 < d.entries.len() { "," } else { "" };
+            out.push_str(&format!("\n    {}{}", self.fmt_defer_entry(d, entry), sep));
         }
         out
+    }
+
+    fn fmt_defer_entry(&self, d: &Defer<Sym>, e: &DeferEntry<Sym>) -> String {
+        let mut out = self.resolve(e.source_pos).to_string();
+        if !e.source_pattern.is_empty() {
+            out.push_str(&self.fmt_pattern_list(&e.source_pattern));
+        }
+        if let Some(g) = &e.source_guard {
+            out.push_str(&format!(" if ({})", self.fmt_expr(g, 0)));
+        }
+        out.push_str(" ->");
+        let target_elided = e.target_pos == d.target && e.target_args.is_empty();
+        if !target_elided {
+            out.push_str(&format!(" {}", self.resolve(e.target_pos)));
+            if !e.target_args.is_empty() {
+                let parts: Vec<String> =
+                    e.target_args.iter().map(|a| self.fmt_expr(a, 0)).collect();
+                out.push_str(&format!("[{}]", parts.join(", ")));
+            }
+        }
+        if e.directions.is_empty() {
+            out.push_str(" {}");
+            return out;
+        }
+        use std::collections::BTreeMap;
+        let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut order: Vec<String> = Vec::new();
+        for m in &e.directions {
+            let src = self.fmt_dir_ref(&m.source_dir);
+            let tgt = self.fmt_dir_ref(&m.target_dir);
+            if !grouped.contains_key(&src) {
+                order.push(src.clone());
+            }
+            grouped.entry(src).or_default().push(tgt);
+        }
+        let lines: Vec<String> = order
+            .iter()
+            .map(|src| {
+                let tgts = &grouped[src];
+                format!("        {} -> {}", tgts.join(" | "), src)
+            })
+            .collect();
+        out.push_str(&format!(" {{\n{}\n    }}", lines.join(",\n")));
+        out
+    }
+
+    fn fmt_pattern(&self, p: &Pattern<Sym>) -> String {
+        match p {
+            Pattern::Wildcard => "_".to_string(),
+            Pattern::Bind(s) => self.resolve(*s).to_string(),
+        }
+    }
+
+    fn fmt_pattern_list(&self, ps: &[Pattern<Sym>]) -> String {
+        let parts: Vec<String> = ps.iter().map(|p| self.fmt_pattern(p)).collect();
+        format!("[{}]", parts.join(", "))
+    }
+
+    fn fmt_dir_ref(&self, r: &DirRef<Sym>) -> String {
+        match r {
+            DirRef::Named(s) => self.resolve(*s).to_string(),
+            DirRef::Abstract { src_pos, src_pattern, tgt_pos, tgt_args } => {
+                let mut out = self.resolve(*src_pos).to_string();
+                if !src_pattern.is_empty() {
+                    out.push_str(&self.fmt_pattern_list(src_pattern));
+                }
+                out.push_str(&format!(" => {}", self.resolve(*tgt_pos)));
+                if !tgt_args.is_empty() {
+                    let parts: Vec<String> =
+                        tgt_args.iter().map(|a| self.fmt_expr(a, 0)).collect();
+                    out.push_str(&format!("[{}]", parts.join(", ")));
+                }
+                out
+            }
+        }
     }
 
     fn fmt_position(&self, pos: &Position<Sym>) -> String {

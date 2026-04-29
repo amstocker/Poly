@@ -97,7 +97,7 @@ impl Engine {
 
     pub fn fmt_bindings(&self, b: &Bindings) -> String {
         if b.is_empty() {
-            return "[]".to_string();
+            return String::new();
         }
         let parts: Vec<String> = b
             .iter()

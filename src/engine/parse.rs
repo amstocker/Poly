@@ -1,8 +1,7 @@
 use chumsky::prelude::*;
-use std::collections::BTreeMap;
 
-use super::{BinOp, Decl, Defer, Direction, Expr, Interface, Param, Position, Schema, SchemaBody,
-    Transition, Type, UnOp, Variant};
+use super::{BinOp, Decl, Defer, DeferEntry, DirMapping, DirRef, Direction, Expr, Interface, Param,
+    Pattern, Position, Schema, SchemaBody, Transition, Type, UnOp, Variant};
 
 
 // ============================================================================
@@ -19,6 +18,24 @@ fn ws() -> impl Parser<char, (), Error = Simple<char>> + Clone {
 
 fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
     text::ident().padded_by(ws())
+}
+
+fn qualified_ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    text::ident()
+        .then(just("::").ignore_then(text::ident()).repeated())
+        .map(|(head, rest): (String, Vec<String>)| {
+            if rest.is_empty() {
+                head
+            } else {
+                let mut s = head;
+                for part in rest {
+                    s.push_str("::");
+                    s.push_str(&part);
+                }
+                s
+            }
+        })
+        .padded_by(ws())
 }
 
 fn keyword(kw: &'static str) -> impl Parser<char, (), Error = Simple<char>> + Clone {
@@ -254,117 +271,131 @@ fn position_parser() -> impl Parser<char, Position<String>, Error = Simple<char>
 // ============================================================================
 
 fn interface_decls() -> impl Parser<char, Vec<Decl<String>>, Error = Simple<char>> {
+    let single_state_body = direction_parser()
+        .separated_by(just(',').padded_by(ws()))
+        .delimited_by(just('{').padded_by(ws()), just('}').padded_by(ws()));
+
+    enum Body {
+        Positions(Vec<Position<String>>),
+        SingleState(Vec<Direction<String>>),
+    }
+
+    let body = single_state_body
+        .map(Body::SingleState)
+        .or(position_parser().separated_by(just(',').padded_by(ws())).map(Body::Positions));
+
     keyword("interface")
         .ignore_then(ident())
         .then(param_list())
-        .then(position_parser().separated_by(just(',').padded_by(ws())))
-        .map(|((name, params), positions)| {
+        .then(body)
+        .map(|((name, params), body)| {
+            let positions = match body {
+                Body::Positions(ps) => ps,
+                Body::SingleState(directions) => vec![Position {
+                    name: name.clone(),
+                    params: Vec::new(),
+                    guard: None,
+                    directions,
+                }],
+            };
             let iface = Interface { name, params, positions };
             desugar_interface(iface)
         })
 }
 
 fn desugar_interface(iface: Interface<String>) -> Vec<Decl<String>> {
-    let plain = !iface.is_parameterized();
     let has_transitions = iface
         .positions
         .iter()
         .any(|p| p.directions.iter().any(|d| d.transition.is_some()));
 
-    if !plain || !has_transitions {
+    if !has_transitions {
         return vec![Decl::Interface(iface)];
     }
 
-    use std::collections::BTreeSet;
-    let mut states: BTreeSet<String> = iface.positions.iter().map(|p| p.name.clone()).collect();
-    for p in &iface.positions {
-        for d in &p.directions {
-            if let Some(t) = &d.transition {
-                states.insert(t.target_pos.clone());
-            }
-        }
-    }
-
-    let external_positions: Vec<Position<String>> = states
+    let external_positions: Vec<Position<String>> = iface
+        .positions
         .iter()
-        .map(|s| {
-            let directions = match iface.positions.iter().find(|p| &p.name == s) {
-                Some(p) => p
-                    .directions
-                    .iter()
-                    .map(|d| Direction {
-                        name: d.name.clone(),
-                        params: Vec::new(),
-                        guard: None,
-                        transition: None,
-                    })
-                    .collect(),
-                None => Vec::new(),
-            };
-            Position {
-                name: s.clone(),
-                params: Vec::new(),
-                guard: None,
-                directions,
-            }
+        .map(|p| Position {
+            name: p.name.clone(),
+            params: p.params.clone(),
+            guard: p.guard.clone(),
+            directions: p
+                .directions
+                .iter()
+                .map(|d| Direction {
+                    name: d.name.clone(),
+                    params: d.params.clone(),
+                    guard: d.guard.clone(),
+                    transition: None,
+                })
+                .collect(),
         })
         .collect();
     let external = Interface {
         name: iface.name.clone(),
-        params: Vec::new(),
+        params: iface.params.clone(),
         positions: external_positions,
     };
 
-    let internal_positions: Vec<Position<String>> = states
+    let internal_positions: Vec<Position<String>> = iface
+        .positions
         .iter()
-        .map(|s| {
-            let directions: Vec<Direction<String>> = states
-                .iter()
-                .map(|t| Direction {
-                    name: format!("{s}=>{t}"),
-                    params: Vec::new(),
-                    guard: None,
-                    transition: None,
-                })
-                .collect();
-            Position {
-                name: s.clone(),
-                params: Vec::new(),
-                guard: None,
-                directions,
-            }
+        .map(|p| Position {
+            name: p.name.clone(),
+            params: p.params.clone(),
+            guard: p.guard.clone(),
+            directions: Vec::new(),
         })
         .collect();
-    let internal_name = format!("{}.internal", iface.name);
+    let internal_name = format!("{}::Internal", iface.name);
     let internal = Interface {
         name: internal_name.clone(),
-        params: Vec::new(),
+        params: iface.params.clone(),
         positions: internal_positions,
     };
 
-    let mut pos_map: BTreeMap<String, String> = BTreeMap::new();
-    let mut dir_map: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
-    for s in &states {
-        pos_map.insert(s.clone(), s.clone());
-    }
+    let mut entries: Vec<DeferEntry<String>> = Vec::new();
     for p in &iface.positions {
-        let mut inner: BTreeMap<String, String> = BTreeMap::new();
-        for d in &p.directions {
-            let dest = d
-                .transition
-                .as_ref()
-                .map(|t| t.target_pos.clone())
-                .unwrap_or_else(|| p.name.clone());
-            inner.insert(d.name.clone(), format!("{}=>{}", p.name, dest));
-        }
-        dir_map.insert(p.name.clone(), inner);
+        let source_pattern: Vec<Pattern<String>> = p
+            .params
+            .iter()
+            .map(|param| Pattern::Bind(param.name.clone()))
+            .collect();
+        let target_args: Vec<Expr<String>> = p
+            .params
+            .iter()
+            .map(|param| Expr::Var(param.name.clone()))
+            .collect();
+        let directions: Vec<DirMapping<String>> = p
+            .directions
+            .iter()
+            .filter_map(|d| {
+                d.transition.as_ref().map(|trans| DirMapping {
+                    target_dir: DirRef::Named(d.name.clone()),
+                    source_dir: DirRef::Abstract {
+                        src_pos: p.name.clone(),
+                        src_pattern: source_pattern.clone(),
+                        tgt_pos: trans.target_pos.clone(),
+                        tgt_args: trans.args.clone(),
+                    },
+                })
+            })
+            .collect();
+        entries.push(DeferEntry {
+            source_pos: p.name.clone(),
+            source_pattern,
+            source_guard: None,
+            target_pos: p.name.clone(),
+            target_args,
+            directions,
+        });
     }
     let defer = Defer {
-        name: format!("{}.run", iface.name),
+        name: format!("{}::Run", iface.name),
         source: internal_name,
         target: iface.name.clone(),
-        pos_map,
-        dir_map,
+        entries,
     };
 
     vec![
@@ -430,48 +461,110 @@ fn schema_decl() -> impl Parser<char, Schema<String>, Error = Simple<char>> {
 // Defer
 // ============================================================================
 
-fn dir_mapping() -> impl Parser<char, (Vec<String>, String), Error = Simple<char>> {
-    ident()
-        .separated_by(just('|').padded_by(ws()))
-        .then_ignore(just("->").padded_by(ws()))
-        .then(ident())
+fn pattern() -> impl Parser<char, Pattern<String>, Error = Simple<char>> + Clone {
+    let wildcard = just('_').padded_by(ws()).to(Pattern::Wildcard);
+    let bind = ident().map(Pattern::Bind);
+    wildcard.or(bind)
 }
 
-fn pos_mapping(
-) -> impl Parser<char, (String, String, Vec<(Vec<String>, String)>), Error = Simple<char>> {
+fn pattern_list() -> impl Parser<char, Vec<Pattern<String>>, Error = Simple<char>> + Clone {
+    pattern()
+        .separated_by(just(',').padded_by(ws()))
+        .delimited_by(just('[').padded_by(ws()), just(']').padded_by(ws()))
+        .or_not()
+        .map(|opt| opt.unwrap_or_default())
+}
+
+fn arg_list() -> impl Parser<char, Vec<Expr<String>>, Error = Simple<char>> + Clone {
+    expr_parser()
+        .separated_by(just(',').padded_by(ws()))
+        .delimited_by(just('[').padded_by(ws()), just(']').padded_by(ws()))
+        .or_not()
+        .map(|opt| opt.unwrap_or_default())
+}
+
+fn abstract_dir_ref() -> impl Parser<char, DirRef<String>, Error = Simple<char>> + Clone {
     ident()
-        .then_ignore(just("->").padded_by(ws()))
+        .then(pattern_list())
+        .then_ignore(just("=>").padded_by(ws()))
         .then(ident())
+        .then(arg_list())
+        .map(|(((src_pos, src_pattern), tgt_pos), tgt_args)| DirRef::Abstract {
+            src_pos,
+            src_pattern,
+            tgt_pos,
+            tgt_args,
+        })
+}
+
+fn dir_ref() -> impl Parser<char, DirRef<String>, Error = Simple<char>> + Clone {
+    abstract_dir_ref().or(ident().map(DirRef::Named))
+}
+
+fn dir_mapping() -> impl Parser<char, Vec<DirMapping<String>>, Error = Simple<char>> + Clone {
+    dir_ref()
+        .separated_by(just('|').padded_by(ws()))
+        .then_ignore(just("->").padded_by(ws()))
+        .then(dir_ref())
+        .map(|(target_dirs, source_dir)| {
+            target_dirs
+                .into_iter()
+                .map(|target_dir| DirMapping {
+                    target_dir,
+                    source_dir: source_dir.clone(),
+                })
+                .collect()
+        })
+}
+
+fn defer_entry() -> impl Parser<char, DeferEntry<String>, Error = Simple<char>> {
+    ident()
+        .then(pattern_list())
+        .then(keyword("if").ignore_then(expr_parser()).or_not())
+        .then_ignore(just("->").padded_by(ws()))
+        .then(ident().or_not())
+        .then(arg_list())
         .then(
             dir_mapping()
                 .separated_by(just(',').padded_by(ws()))
-                .delimited_by(just('{').padded_by(ws()), just('}').padded_by(ws())),
+                .delimited_by(just('{').padded_by(ws()), just('}').padded_by(ws()))
+                .or_not()
+                .map(|opt| opt.unwrap_or_default()),
         )
-        .map(|((src, tgt), dirs)| (src, tgt, dirs))
+        .map(
+            |(((((source_pos, source_pattern), source_guard), target_pos), target_args), groups)| {
+                let directions: Vec<DirMapping<String>> = groups.into_iter().flatten().collect();
+                DeferEntry {
+                    source_pos,
+                    source_pattern,
+                    source_guard,
+                    target_pos: target_pos.unwrap_or_default(),
+                    target_args,
+                    directions,
+                }
+            },
+        )
 }
 
 fn defer_decl() -> impl Parser<char, Defer<String>, Error = Simple<char>> {
     keyword("defer")
         .ignore_then(ident())
         .then_ignore(just(':').padded_by(ws()))
-        .then(ident())
+        .then(qualified_ident())
         .then_ignore(just("->").padded_by(ws()))
-        .then(ident())
-        .then(pos_mapping().separated_by(just(',').padded_by(ws())))
-        .map(|(((name, source), target), mappings)| {
-            let mut pos_map = BTreeMap::new();
-            let mut dir_map: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
-            for (src, tgt, dirs) in mappings {
-                pos_map.insert(src.clone(), tgt);
-                let mut inner = BTreeMap::new();
-                for (tgt_dirs, src_dir) in dirs {
-                    for tgt_dir in tgt_dirs {
-                        inner.insert(tgt_dir, src_dir.clone());
+        .then(qualified_ident())
+        .then(defer_entry().separated_by(just(',').padded_by(ws())))
+        .map(|(((name, source), target), entries)| {
+            let entries = entries
+                .into_iter()
+                .map(|mut e| {
+                    if e.target_pos.is_empty() {
+                        e.target_pos = target.clone();
                     }
-                }
-                dir_map.insert(src, inner);
-            }
-            Defer { name, source, target, pos_map, dir_map }
+                    e
+                })
+                .collect();
+            Defer { name, source, target, entries }
         })
 }
 
