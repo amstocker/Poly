@@ -215,9 +215,87 @@ concern.
 
 ### Open from Stage 2
 
-- No `Goal::Where(Expr)` yet — residual constraints aren't expressible.
+- ~~No `Goal::Where(Expr)` yet — residual constraints aren't expressible.
   Needed for the parameterized-answer shape ("`Decrement` enabled when
-  `n > 0`") that the vision memory pins as the immediate frontier.
-- No simplifier. Even constant folding for fully-bound constraint expressions
-  is missing — needed to collapse concrete-input residuals to true/false.
+  `n > 0`") that the vision memory pins as the immediate frontier.~~ Landed.
+- ~~No simplifier. Even constant folding for fully-bound constraint
+  expressions is missing — needed to collapse concrete-input residuals to
+  true/false.~~ Landed (trivial simplifier — constant folding only).
 - No surface syntax. Queries are constructed as Rust values.
+
+---
+
+## Addendum (2026-04-29) — Residuals + trivial simplifier landed
+
+The first two Open-from-Stage-2 items closed in one increment. Vision-memory
+frontier ("`Decrement` enabled when `n > 0`") now works.
+
+### What shipped
+
+- **`Answer.residual: Vec<Expr<Sym>>`** — first-class on every answer.
+  Empty residual = unconditionally true. The Vec is conjuncted at the end
+  of the query and replaced with a single simplified expression (or
+  cleared, or the answer is dropped).
+- **Auto-accumulation from `Position` and `Direction` goals** — when a
+  matched fact has a non-empty guard, that guard's expression is pushed
+  onto the answer's residual. The query author doesn't have to write a
+  separate `Where` to "ask for" the guard.
+- **`Goal::Where(Expr<Sym>)`** — explicit constraint layering. Same
+  residual channel as auto-accumulated guards.
+- **`eval::simplify(eng, expr, env)`** — partial evaluator. Walks Expr,
+  substitutes any `Var(s)` whose Sym is in `env`, constant-folds every
+  subexpression that becomes fully bound. Returns `Expr<Sym>` (literal
+  if reduced, otherwise partially-folded tree). Round-trips Records
+  through `Construct/Field` so schema-typed env entries simplify
+  correctly.
+- **`run_query(eng, facts, query, env)`** — `env: &Bindings` is now
+  threaded through. After solving, per-answer simplification: residual
+  reduces to `LitBool(true)` → cleared; reduces to `LitBool(false)` →
+  answer dropped; otherwise → kept as a single conjunct on the residual.
+
+### What the simplifier *doesn't* do (still Stage 4)
+
+- Range narrowing (`n > 0 ∧ n < 10` stays as written).
+- Contradiction detection that needs more than constant folding
+  (`n > 5 ∧ n < 3` is symbolic).
+- Equivalence rewriting (`n + 0 → n`).
+
+These are bespoke-simplifier territory; the trivial pass is enough for
+"concrete-input collapses, parameterized stays symbolic," which was the
+acceptance bar.
+
+### Confirmed by implementation
+
+- **Gap 1 resolution holds.** Auto-accumulation of guards into residuals,
+  with end-of-query simplification, was the right shape. No new goals
+  needed beyond `Where`.
+- **Gap 2 (per-entry scope) still hasn't bitten.** None of the new tests
+  exercise abstract direction refs that bind names visible to a `Where`.
+  Will surface when the Stage 3 surface syntax lets users write queries
+  that traverse `defer_dir` patterns symbolically.
+- **Gap 3 resolution holds.** `env: &Bindings` is the input shape; it
+  applies to expression simplification, not to logic-variable binding.
+
+### Open from Stage 2-residuals
+
+- **Surface syntax (Stage 3 of `unified_query.md`).** Last
+  Open-from-Stage-2 item. The hand-built Rust query values are workable
+  for tests but not for the agent-tool surface in the vision memory.
+- **Bespoke simplifier (Stage 4).** Triggered by a use case where the
+  symbolic residual is too noisy to render. Not yet pressing.
+- **Per-entry scope rule (Gap 2).** Will need pinning when surface syntax
+  lets users name binders that flow through `defer_dir` abstract refs.
+
+### Code state
+
+- `src/engine/eval.rs` — `simplify`, `conjoin`, plus Value↔Expr
+  round-trip helpers.
+- `src/engine/uquery.rs` — `Answer { subst, residual }`,
+  `Goal::Where(Expr<Sym>)`, `run_query` takes `&Bindings`. 14 tests
+  (9 reductions + 5 residual/simplifier).
+
+### Next step
+
+Stage 3: pick a query surface syntax and write the parser. The relation
+schema (§1) and goal vocabulary (`Goal` enum) are stable enough now that
+the syntax can be designed against them rather than alongside them.

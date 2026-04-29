@@ -195,26 +195,30 @@ version.
 
 ## Implementation stages
 
-**Stage 0: relation schema, on paper.**
+**Stage 0: relation schema, on paper.** *(landed — see `unified_query_stage0.md`)*
 - Pin the exact set of relations and their types.
 - Hand-translate `explain_position`, `next_position`, `locate_action` into
   queries against them.
 - Look for relations that are missing or awkward; iterate.
 - Output: a short doc (this section, sharpened) + handwritten query examples.
 
-**Stage 1: fact projection + introspection.**
+**Stage 1: fact projection + introspection.** *(landed — `Engine::facts()`, `poly facts <file>`)*
 - Add `Engine::facts() -> Facts` that walks schemas/interfaces/defers and
   produces the relation tuples.
 - Add `poly facts <file>` CLI for round-trip inspection.
 - No query engine yet; just the data layer.
 
-**Stage 2: unifier + constraint accumulation.**
+**Stage 2: unifier + constraint accumulation.** *(landed — `src/engine/uquery.rs`)*
 - Hand-roll first-order unification over `Pattern<T>` and `Expr<T>`.
 - Accumulate residual constraints rather than evaluating them eagerly.
 - Test by writing the explicit queries' joins by hand against the fact base
   and verifying the answers match the existing implementations.
+- **Stage 2.5 (added):** `Goal::Where(Expr<Sym>)`, auto-accumulation of
+  position/direction guards into `Answer.residual`, trivial constant-folding
+  simplifier (`eval::simplify`), `run_query` takes a `&Bindings` env. This
+  was the immediate-frontier work the vision memory called for.
 
-**Stage 3: query syntax + parser.**
+**Stage 3: query syntax + parser.** *(next)*
 - Pick the surface syntax (the sketch in §2 is provisional). Likely a separate
   parser module — query syntax doesn't have to match `.poly` syntax.
 - `poly query <file> <query>` CLI.
@@ -222,7 +226,8 @@ version.
   the unified query reproduces their output.
 
 **Stage 4: bespoke simplifier.**
-- Constant folding, monotonic comparison narrowing, obvious contradictions.
+- Constant folding *(already landed in Stage 2.5)*, monotonic comparison
+  narrowing, obvious contradictions, equivalence rewriting.
 - Integrate into the query result rendering: collapse residuals to `true`,
   reject on `false`, otherwise present the simplified form.
 - Trigger: a use case where the raw residual is too noisy.
