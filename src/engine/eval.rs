@@ -6,14 +6,17 @@ use super::{BinOp, Engine, Expr, SchemaBody, Sym, UnOp};
 // Partial evaluation (the "trivial simplifier" — constant folding only)
 // ============================================================================
 //
-// `simplify` walks an expression and reduces every subexpression that becomes
-// fully bound, leaving the rest symbolic. The result is always an `Expr<Sym>`:
-// a fully-reduced expression collapses to a literal, an unbindable expression
-// is returned unchanged, and a partially-bound expression is returned with the
-// reduced parts folded in place.
+// `const_fold` walks an expression and reduces every subexpression that
+// becomes fully bound by the env, leaving the rest symbolic. The result is
+// always an `Expr<Sym>`: a fully-reduced expression collapses to a literal,
+// an unbindable expression is returned unchanged, and a partially-bound
+// expression is returned with the reduced parts folded in place.
 //
-// This is enough to (a) collapse concrete-input residuals to true/false, and
-// (b) leave parameterized residuals symbolic for the query renderer to print.
+// This is the leaf operator used by `simplify::reduce`. By itself it handles
+// (a) substituting env values into the expression and (b) folding any
+// subexpression whose operands have all become literals — but it does no
+// algebraic reasoning beyond constant folding (no `n + 0 → n`, no interval
+// narrowing, no contradiction detection — those live in `simplify`).
 
 
 // ============================================================================
@@ -128,7 +131,7 @@ pub fn eval_bool(eng: &Engine, e: &Expr<Sym>, b: &Bindings) -> Result<bool, Eval
     }
 }
 
-pub fn simplify(eng: &Engine, e: &Expr<Sym>, b: &Bindings) -> Expr<Sym> {
+pub fn const_fold(eng: &Engine, e: &Expr<Sym>, b: &Bindings) -> Expr<Sym> {
     match e {
         Expr::LitInt(_) | Expr::LitStr(_) | Expr::LitBool(_) => e.clone(),
         Expr::Var(s) => match b.get(s) {
@@ -136,7 +139,7 @@ pub fn simplify(eng: &Engine, e: &Expr<Sym>, b: &Bindings) -> Expr<Sym> {
             None => e.clone(),
         },
         Expr::UnOp(op, inner) => {
-            let inner_s = simplify(eng, inner, b);
+            let inner_s = const_fold(eng, inner, b);
             if let Some(v) = expr_as_value(&inner_s) {
                 if let Ok(folded) = eval_unop(*op, v) {
                     if let Some(ex) = value_to_expr(eng, &folded) {
@@ -147,8 +150,8 @@ pub fn simplify(eng: &Engine, e: &Expr<Sym>, b: &Bindings) -> Expr<Sym> {
             Expr::UnOp(*op, Box::new(inner_s))
         }
         Expr::BinOp(op, l, r) => {
-            let ls = simplify(eng, l, b);
-            let rs = simplify(eng, r, b);
+            let ls = const_fold(eng, l, b);
+            let rs = const_fold(eng, r, b);
             if let (Some(lv), Some(rv)) = (expr_as_value(&ls), expr_as_value(&rs)) {
                 if let Ok(folded) = eval_binop(*op, lv, rv) {
                     if let Some(ex) = value_to_expr(eng, &folded) {
@@ -159,7 +162,7 @@ pub fn simplify(eng: &Engine, e: &Expr<Sym>, b: &Bindings) -> Expr<Sym> {
             Expr::BinOp(*op, Box::new(ls), Box::new(rs))
         }
         Expr::Field(base, name) => {
-            let bs = simplify(eng, base, b);
+            let bs = const_fold(eng, base, b);
             if let Expr::Construct(schema, args) = &bs {
                 if let Some(s) = eng.schemas.get(schema) {
                     if let SchemaBody::Record(params) = &s.body {
@@ -172,7 +175,7 @@ pub fn simplify(eng: &Engine, e: &Expr<Sym>, b: &Bindings) -> Expr<Sym> {
             Expr::Field(Box::new(bs), *name)
         }
         Expr::Construct(name, args) => {
-            let args_s: Vec<_> = args.iter().map(|a| simplify(eng, a, b)).collect();
+            let args_s: Vec<_> = args.iter().map(|a| const_fold(eng, a, b)).collect();
             Expr::Construct(*name, args_s)
         }
     }

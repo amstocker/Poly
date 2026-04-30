@@ -242,12 +242,13 @@ frontier ("`Decrement` enabled when `n > 0`") now works.
   separate `Where` to "ask for" the guard.
 - **`Goal::Where(Expr<Sym>)`** — explicit constraint layering. Same
   residual channel as auto-accumulated guards.
-- **`eval::simplify(eng, expr, env)`** — partial evaluator. Walks Expr,
-  substitutes any `Var(s)` whose Sym is in `env`, constant-folds every
-  subexpression that becomes fully bound. Returns `Expr<Sym>` (literal
-  if reduced, otherwise partially-folded tree). Round-trips Records
-  through `Construct/Field` so schema-typed env entries simplify
-  correctly.
+- **`eval::const_fold(eng, expr, env)`** *(was `eval::simplify`)* —
+  partial evaluator. Walks Expr, substitutes any `Var(s)` whose Sym is
+  in `env`, constant-folds every subexpression that becomes fully bound.
+  Returns `Expr<Sym>` (literal if reduced, otherwise partially-folded
+  tree). Round-trips Records through `Construct/Field` so schema-typed
+  env entries simplify correctly. Renamed in Stage 4 because
+  `simplify::reduce` now wraps it.
 - **`run_query(eng, facts, query, env)`** — `env: &Bindings` is now
   threaded through. After solving, per-answer simplification: residual
   reduces to `LitBool(true)` → cleared; reduces to `LitBool(false)` →
@@ -263,6 +264,8 @@ frontier ("`Decrement` enabled when `n > 0`") now works.
 These are bespoke-simplifier territory; the trivial pass is enough for
 "concrete-input collapses, parameterized stays symbolic," which was the
 acceptance bar.
+
+*(Update: all three landed in Stage 4 — see addendum below.)*
 
 ### Confirmed by implementation
 
@@ -281,21 +284,105 @@ acceptance bar.
 - **Surface syntax (Stage 3 of `unified_query.md`).** Last
   Open-from-Stage-2 item. The hand-built Rust query values are workable
   for tests but not for the agent-tool surface in the vision memory.
-- **Bespoke simplifier (Stage 4).** Triggered by a use case where the
-  symbolic residual is too noisy to render. Not yet pressing.
+- ~~**Bespoke simplifier (Stage 4).** Triggered by a use case where the
+  symbolic residual is too noisy to render.~~ Landed (see Stage 4
+  addendum below).
 - **Per-entry scope rule (Gap 2).** Will need pinning when surface syntax
   lets users name binders that flow through `defer_dir` abstract refs.
 
-### Code state
+---
 
-- `src/engine/eval.rs` — `simplify`, `conjoin`, plus Value↔Expr
-  round-trip helpers.
-- `src/engine/uquery.rs` — `Answer { subst, residual }`,
-  `Goal::Where(Expr<Sym>)`, `run_query` takes `&Bindings`. 14 tests
-  (9 reductions + 5 residual/simplifier).
+## Addendum (2026-04-30) — Stage 4: residual reasoning landed
+
+The remaining "bespoke simplifier" work shipped: range narrowing,
+contradiction detection, algebraic identities, and equality
+substitution. The user pulled in equality substitution alongside the
+other three rather than deferring it.
+
+### What shipped
+
+New module `src/engine/simplify.rs`. Public entry
+`simplify::reduce(eng, expr, env)` that runs an iterated pipeline (max
+8 iterations, fixpoint detected by structural equality):
+
+1. **`apply_identities`** — bottom-up rewrite. Boolean absorption/
+   annihilation (`e ∧ true → e`, `e ∧ false → false`, …), arithmetic
+   identities (`n + 0 → n`, `n * 1 → n`, `n * 0 → 0`, `n - n → 0`),
+   double-negation elimination, syntactic-equality reductions
+   (`e ∧ e → e`, `e = e → true`), full per-op constant folding.
+2. **`flatten_and`** — top-level And-tree → flat conjunct list.
+   Short-circuits on any `LitBool(false)` conjunct.
+3. **`extract_equalities`** — `var = expr` becomes a substitution
+   entry whenever `var` is a bare `Var(s)` not appearing in `expr`.
+   Substituted everywhere (and the equality fact itself is kept in the
+   final output, since it's part of the answer the caller needs).
+4. **Linear normalization (`Linear` + `to_linear`)** — every
+   comparison atom is normalized to `c0 + Σ ci * vi ⋈ 0`. If the
+   resulting linear has exactly one variable with coefficient ±1, we
+   extract a `SimpleAtom { var, op, rhs }` (flipping the inequality
+   when coefficient is -1). Examples: `n + 1 > 5` → `n > 4`,
+   `5 - n < 3` → `n > 2`. Multiplication is permitted only when at
+   least one side is a pure constant — `n * m` is detected as
+   nonlinear and left in `others`.
+5. **Per-variable `Interval`** — `lo`, `hi` (each `Option<(i64, bool)>`
+   carrying its inclusivity), plus a `BTreeSet<i64>` of explicit `≠`
+   values. Merge rules: same value, exclusive (strict) wins; different
+   values, max wins on lower bounds, min wins on upper bounds. Empty
+   intervals (`lo > hi`, or singleton excluded by `ne`) trigger a
+   `LitBool(false)` short-circuit.
+6. **Singleton promotion** — closed `[k,k]` interval becomes
+   `var = k`, which feeds into the next iteration's substitution.
+7. **Reassemble + dedupe** — emit equalities, then narrowed atoms,
+   then everything else. Dedupe by Debug repr (cheap; residuals are
+   tiny). Empty list → `LitBool(true)`.
+
+### Renames
+
+- `eval::simplify` → `eval::const_fold`. The new name is more
+  descriptive — it's the leaf operator the bigger pipeline calls — and
+  avoids confusion with the new `simplify` module.
+
+### Acceptance bar (all met)
+
+- `n > 0 ∧ n > 5` → `n > 5`
+- `n >= 0 ∧ n > 0` → `n > 0`
+- `n > 5 ∧ n < 3` → `false` (answer dropped)
+- `n + 0 + 0 > 5` → `n > 5`
+- `n + 1 > 5` → `n > 4` (linearization)
+- `(n > 0) ∧ (n > 0)` → `n > 0`
+- `n >= 5 ∧ n <= 5` → `n = 5` (singleton promotion)
+- `n = 5 ∧ n + m > 10` → `n = 5 ∧ m > 5` (equality substitution)
+
+### What still doesn't simplify
+
+- Multi-variable linear arithmetic without an equality to substitute.
+  `n + m > 10` stays as written (no narrowing on either variable
+  alone).
+- Comparisons with coefficients other than ±1. `2*n > 5` is left in
+  `others` rather than promoted to `n >= 3`. Adding this would need
+  signed integer division with rounding, plausibly a Stage 5 piece if
+  examples ever produce such atoms.
+- Disjunction narrowing. `(n > 5) ∨ (n > 10)` is left as written.
+  Disjunctions are rare in current residuals; defer until they aren't.
+- Field-access folding beyond what `const_fold` already does (which is
+  Field-on-Construct).
+
+### Test count
+
+The simplifier module has 10 unit tests covering each pipeline stage.
+`uquery.rs` has 14 tests (9 reductions + 5 residual/simplifier). All
+24 pass. One existing test (`where_clause_adds_user_constraint`) had
+its no-env assertion updated — what was previously a 2-conjunct
+And-tree (`n > 0 ∧ n > 5`) is now a single `n > 5` after narrowing.
+
+### Open from Stage 4
+
+- Multi-variable narrowing (deferred — no use case yet).
+- Coefficient-≠-±1 narrowing (deferred — no use case yet).
+- Disjunction narrowing (deferred — no use case yet).
 
 ### Next step
 
-Stage 3: pick a query surface syntax and write the parser. The relation
-schema (§1) and goal vocabulary (`Goal` enum) are stable enough now that
-the syntax can be designed against them rather than alongside them.
+Stage 3 (surface syntax) is now the only remaining Open-from-Stage-2
+item. Worth picking up next once the user wants the agent-tool surface
+or just a friendlier CLI than constructing query values in Rust.

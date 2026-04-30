@@ -225,12 +225,18 @@ version.
 - `poly explain` / `poly locate` become thin wrappers (or get deprecated) once
   the unified query reproduces their output.
 
-**Stage 4: bespoke simplifier.**
-- Constant folding *(already landed in Stage 2.5)*, monotonic comparison
-  narrowing, obvious contradictions, equivalence rewriting.
-- Integrate into the query result rendering: collapse residuals to `true`,
-  reject on `false`, otherwise present the simplified form.
-- Trigger: a use case where the raw residual is too noisy.
+**Stage 4: bespoke simplifier.** *(landed — `src/engine/simplify.rs`)*
+- Constant folding *(landed in Stage 2.5)*, monotonic comparison narrowing,
+  contradiction detection, algebraic identities, and equality substitution.
+- Integrated into `run_query`: residual reduces to `true` → cleared on the
+  answer; reduces to `false` → answer dropped; otherwise → kept as a single
+  conjunct on the answer.
+- Trigger ended up being "user asked for it before the residuals got noisy."
+  The acceptance bar (`n > 0 ∧ n > 5 → n > 5`, contradictions to false,
+  singleton promotion to equality, equality substitution) is met. See
+  `unified_query_stage0.md`'s Stage 4 addendum for what's still open
+  (multi-variable narrowing, non-±1 coefficients, disjunction narrowing —
+  none with a current use case).
 
 **Stage 5 (open): solver integration.**
 - If parameterized queries start producing residuals the bespoke simplifier

@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
-use super::eval::{simplify, conjoin, Bindings};
+use super::eval::{conjoin, Bindings};
 use super::facts::Facts;
+use super::simplify::reduce;
 use super::*;
 
 
@@ -384,7 +385,7 @@ fn simplify_answer(eng: &Engine, ans: &Answer, env: &Bindings) -> Option<Answer>
     let Some(joined) = conjoin(&ans.residual) else {
         return Some(ans.clone());
     };
-    let reduced = simplify(eng, &joined, env);
+    let reduced = reduce(eng, &joined, env);
     match reduced {
         Expr::LitBool(true) => Some(Answer { subst: ans.subst.clone(), residual: Vec::new() }),
         Expr::LitBool(false) => None,
@@ -854,9 +855,16 @@ mod tests {
         let answers = run_query(&eng, &facts, &q, &env);
         assert!(answers.is_empty());
 
-        // No env: both stay symbolic, conjoined into a single residual.
+        // No env: the simplifier narrows `n > 0 ∧ n > 5` to the tighter
+        // bound `n > 5` (Stage 4 interval narrowing).
         let answers = run_query(&eng, &facts, &q, &Bindings::default());
         assert_eq!(answers.len(), 1);
-        assert!(matches!(answers[0].residual[..], [Expr::BinOp(BinOp::And, _, _)]));
+        match &answers[0].residual[..] {
+            [Expr::BinOp(BinOp::Gt, l, r)] => {
+                assert!(matches!(**l, Expr::Var(s) if s == n));
+                assert!(matches!(**r, Expr::LitInt(5)));
+            }
+            other => panic!("expected `n > 5`, got {other:?}"),
+        }
     }
 }
