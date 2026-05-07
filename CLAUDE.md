@@ -18,9 +18,11 @@ Reference: https://arxiv.org/pdf/2312.00990
 
 ## Repo layout (one-liner)
 
-- `src/engine/` — **the active surface.** All engine work lives here, split into focused modules (`types`, `parse`, `lower`, `validate`, `facts`, `eval`, `simplify`, `uquery`, `fmt`, `interner`, `mod`).
-- `src/main.rs` — CLI driver. No engine logic.
-- `examples/*.poly` — currently `test2.poly` and `graph.poly`; both parseable.
+Cargo workspace with two crates:
+
+- `engine/` — `poly-engine` (lib). **The active surface.** Public API at `engine/src/api.rs` (`Poly` handle + named ops); typed AST at `engine/src/types.rs`; everything else (`uquery`, `eval`, `simplify`, `parse`, `lower`, `validate`, `facts`, `fmt`, `interner`, `engine`) is `pub(crate)`.
+- `cli/` — `poly` (bin). Thin renderer over `Poly`; no engine logic.
+- `examples/*.poly` — currently `counter.poly`, `graph.poly`, `grid.poly`, `test2.poly`; all parseable.
 - Only dependency: `chumsky` (parser combinators).
 
 ## Build / run
