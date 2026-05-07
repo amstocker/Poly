@@ -110,7 +110,7 @@ fn cmd_facts(args: &[String]) -> i32 {
         }
     };
     let Some(poly) = load(path) else { return 1 };
-    print!("{}", poly.engine().fmt_facts(poly.facts()));
+    print!("{}", poly.engine().fmt_facts());
     0
 }
 

@@ -7,7 +7,6 @@
 use std::collections::BTreeMap;
 
 use super::eval::{conjoin, Bindings};
-use super::facts::Facts;
 use super::simplify::reduce;
 use super::*;
 
@@ -229,110 +228,101 @@ fn unify_dir_ref_pat(
 // Per-goal matching against a fact relation
 // ============================================================================
 
-fn match_goal(goal: &Goal, facts: &Facts, ans: &Answer) -> Vec<Answer> {
+fn match_goal(goal: &Goal, eng: &Engine, ans: &Answer) -> Vec<Answer> {
     match goal {
-        Goal::Iface { iface, params } => facts
-            .ifaces
-            .iter()
-            .filter_map(|f| {
-                let s = unify_term(iface, f.iface, &ans.subst)?;
-                let s = unify_slot(params, Value::Params(f.params.clone()), &s)?;
+        Goal::Iface { iface, params } => eng
+            .iface_relation()
+            .filter_map(|i| {
+                let s = unify_term(iface, i.name, &ans.subst)?;
+                let s = unify_slot(params, Value::Params(i.params.clone()), &s)?;
                 Some(ans.with_subst(s))
             })
             .collect(),
-        Goal::IfaceInternal { internal, external } => facts
-            .iface_internals
-            .iter()
-            .filter_map(|f| {
-                let s = unify_term(internal, f.internal, &ans.subst)?;
-                let s = unify_term(external, f.external, &s)?;
+        Goal::IfaceInternal { internal, external } => eng
+            .iface_internal_relation()
+            .filter_map(|(int_sym, ext_sym)| {
+                let s = unify_term(internal, int_sym, &ans.subst)?;
+                let s = unify_term(external, ext_sym, &s)?;
                 Some(ans.with_subst(s))
             })
             .collect(),
-        Goal::SchemaRecord { schema, fields } => facts
-            .schema_records
-            .iter()
-            .filter_map(|f| {
-                let s = unify_term(schema, f.schema, &ans.subst)?;
-                let s = unify_slot(fields, Value::Params(f.fields.clone()), &s)?;
+        Goal::SchemaRecord { schema, fields } => eng
+            .schema_record_relation()
+            .filter_map(|(name, flds)| {
+                let s = unify_term(schema, name, &ans.subst)?;
+                let s = unify_slot(fields, Value::Params(flds.to_vec()), &s)?;
                 Some(ans.with_subst(s))
             })
             .collect(),
-        Goal::SchemaSum { schema, variants } => facts
-            .schema_sums
-            .iter()
-            .filter_map(|f| {
-                let s = unify_term(schema, f.schema, &ans.subst)?;
-                let s = unify_slot(variants, Value::Variants(f.variants.clone()), &s)?;
+        Goal::SchemaSum { schema, variants } => eng
+            .schema_sum_relation()
+            .filter_map(|(name, vars)| {
+                let s = unify_term(schema, name, &ans.subst)?;
+                let s = unify_slot(variants, Value::Variants(vars.to_vec()), &s)?;
                 Some(ans.with_subst(s))
             })
             .collect(),
-        Goal::Position { iface, position, params, guard } => facts
-            .positions
-            .iter()
-            .filter_map(|f| {
-                let s = unify_term(iface, f.iface, &ans.subst)?;
-                let s = unify_term(position, f.position, &s)?;
-                let s = unify_slot(params, Value::Params(f.params.clone()), &s)?;
-                let s = unify_slot(guard, Value::Guard(f.guard.clone()), &s)?;
+        Goal::Position { iface, position, params, guard } => eng
+            .position_relation()
+            .filter_map(|(i_sym, p)| {
+                let s = unify_term(iface, i_sym, &ans.subst)?;
+                let s = unify_term(position, p.name, &s)?;
+                let s = unify_slot(params, Value::Params(p.params.clone()), &s)?;
+                let s = unify_slot(guard, Value::Guard(p.guard.clone()), &s)?;
                 let mut next = ans.with_subst(s);
-                if let Some(g) = &f.guard {
+                if let Some(g) = &p.guard {
                     next.residual.push(g.clone());
                 }
                 Some(next)
             })
             .collect(),
-        Goal::Direction { iface, position, action, params, guard } => facts
-            .directions
-            .iter()
-            .filter_map(|f| {
-                let s = unify_term(iface, f.iface, &ans.subst)?;
-                let s = unify_term(position, f.position, &s)?;
-                let s = unify_term(action, f.action, &s)?;
-                let s = unify_slot(params, Value::Params(f.params.clone()), &s)?;
-                let s = unify_slot(guard, Value::Guard(f.guard.clone()), &s)?;
+        Goal::Direction { iface, position, action, params, guard } => eng
+            .direction_relation()
+            .filter_map(|(i_sym, p_sym, d)| {
+                let s = unify_term(iface, i_sym, &ans.subst)?;
+                let s = unify_term(position, p_sym, &s)?;
+                let s = unify_term(action, d.name, &s)?;
+                let s = unify_slot(params, Value::Params(d.params.clone()), &s)?;
+                let s = unify_slot(guard, Value::Guard(d.guard.clone()), &s)?;
                 let mut next = ans.with_subst(s);
-                if let Some(g) = &f.guard {
+                if let Some(g) = &d.guard {
                     next.residual.push(g.clone());
                 }
                 Some(next)
             })
             .collect(),
-        Goal::Defer { defer, source, target } => facts
-            .defers
-            .iter()
-            .filter_map(|f| {
-                let s = unify_term(defer, f.defer, &ans.subst)?;
-                let s = unify_term(source, f.source, &s)?;
-                let s = unify_term(target, f.target, &s)?;
+        Goal::Defer { defer, source, target } => eng
+            .defer_relation()
+            .filter_map(|d| {
+                let s = unify_term(defer, d.name, &ans.subst)?;
+                let s = unify_term(source, d.source, &s)?;
+                let s = unify_term(target, d.target, &s)?;
                 Some(ans.with_subst(s))
             })
             .collect(),
         Goal::DeferEntry {
             defer, entry_idx, source_pos, src_pattern, src_guard,
             target_pos, target_args,
-        } => facts
-            .defer_entries
-            .iter()
-            .filter_map(|f| {
-                let s = unify_term(defer, f.defer, &ans.subst)?;
-                let s = unify_index_slot(entry_idx, f.entry_idx, &s)?;
-                let s = unify_term(source_pos, f.source_pos, &s)?;
-                let s = unify_slot(src_pattern, Value::Pattern(f.src_pattern.clone()), &s)?;
-                let s = unify_slot(src_guard, Value::Guard(f.src_guard.clone()), &s)?;
-                let s = unify_term(target_pos, f.target_pos, &s)?;
-                let s = unify_slot(target_args, Value::Args(f.target_args.clone()), &s)?;
+        } => eng
+            .defer_entry_relation()
+            .filter_map(|(d_sym, idx, e)| {
+                let s = unify_term(defer, d_sym, &ans.subst)?;
+                let s = unify_index_slot(entry_idx, idx, &s)?;
+                let s = unify_term(source_pos, e.source_pos, &s)?;
+                let s = unify_slot(src_pattern, Value::Pattern(e.source_pattern.clone()), &s)?;
+                let s = unify_slot(src_guard, Value::Guard(e.source_guard.clone()), &s)?;
+                let s = unify_term(target_pos, e.target_pos, &s)?;
+                let s = unify_slot(target_args, Value::Args(e.target_args.clone()), &s)?;
                 Some(ans.with_subst(s))
             })
             .collect(),
-        Goal::DeferDir { defer, entry_idx, target_dir, source_dir } => facts
-            .defer_dirs
-            .iter()
-            .filter_map(|f| {
-                let s = unify_term(defer, f.defer, &ans.subst)?;
-                let s = unify_index_slot(entry_idx, f.entry_idx, &s)?;
-                let s = unify_dir_ref_pat(target_dir, &f.target_dir, &s)?;
-                let s = unify_dir_ref_pat(source_dir, &f.source_dir, &s)?;
+        Goal::DeferDir { defer, entry_idx, target_dir, source_dir } => eng
+            .defer_dir_relation()
+            .filter_map(|(d_sym, idx, m)| {
+                let s = unify_term(defer, d_sym, &ans.subst)?;
+                let s = unify_index_slot(entry_idx, idx, &s)?;
+                let s = unify_dir_ref_pat(target_dir, &m.target_dir, &s)?;
+                let s = unify_dir_ref_pat(source_dir, &m.source_dir, &s)?;
                 Some(ans.with_subst(s))
             })
             .collect(),
@@ -345,21 +335,21 @@ fn match_goal(goal: &Goal, facts: &Facts, ans: &Answer) -> Vec<Answer> {
 // Solver
 // ============================================================================
 
-fn solve(goals: &[Goal], facts: &Facts, ans: Answer) -> Vec<Answer> {
+fn solve(goals: &[Goal], eng: &Engine, ans: Answer) -> Vec<Answer> {
     let Some((first, rest)) = goals.split_first() else {
         return vec![ans];
     };
     let mut out = Vec::new();
-    for next in match_goal(first, facts, &ans) {
-        out.extend(solve(rest, facts, next));
+    for next in match_goal(first, eng, &ans) {
+        out.extend(solve(rest, eng, next));
     }
     out
 }
 
-pub fn run_query(eng: &Engine, facts: &Facts, query: &Query, env: &Bindings) -> Vec<Answer> {
+pub fn run_query(eng: &Engine, query: &Query, env: &Bindings) -> Vec<Answer> {
     let mut out = Vec::new();
     for body in &query.bodies {
-        for ans in solve(body, facts, Answer::empty()) {
+        for ans in solve(body, eng, Answer::empty()) {
             if let Some(simplified) = simplify_answer(eng, &ans, env) {
                 out.push(simplified);
             }
@@ -411,7 +401,6 @@ mod tests {
 
     fn locate_action_via_query(
         eng: &Engine,
-        facts: &Facts,
         action: &str,
     ) -> BTreeSet<(Sym, Sym)> {
         let mut g = VarGen::new();
@@ -433,7 +422,7 @@ mod tests {
                 guard: Slot::Anon,
             },
         ]);
-        run_query(eng, facts, &q, &Bindings::default())
+        run_query(eng, &q, &Bindings::default())
             .iter()
             .map(|a| (answer_sym(a, i_var), answer_sym(a, p_var)))
             .collect()
@@ -442,28 +431,27 @@ mod tests {
     #[test]
     fn locate_action_counter() {
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let count = eng.interner.find("Count").unwrap();
         let counter = eng.interner.find("Counter").unwrap();
         let internal = eng.interner.find("Counter::Internal").unwrap();
         let button = eng.interner.find("Button").unwrap();
 
         // Increment lives on the external Counter only.
-        let inc = locate_action_via_query(&eng, &facts, "Increment");
+        let inc = locate_action_via_query(&eng, "Increment");
         assert_eq!(inc, [(counter, count)].into_iter().collect());
 
         // Decrement: same.
-        let dec = locate_action_via_query(&eng, &facts, "Decrement");
+        let dec = locate_action_via_query(&eng, "Decrement");
         assert_eq!(dec, [(counter, count)].into_iter().collect());
 
         // Press lives on Button.Button. Counter::Internal has no directions of
         // its own (universal-state-machine carrier), so Press doesn't surface
         // there even though SetTo10 wires it through abstractly.
-        let press = locate_action_via_query(&eng, &facts, "Press");
+        let press = locate_action_via_query(&eng, "Press");
         assert_eq!(press, [(button, button)].into_iter().collect());
 
         // The internal carrier has empty directions.
-        let on_internal = locate_action_via_query(&eng, &facts, "Increment")
+        let on_internal = locate_action_via_query(&eng, "Increment")
             .iter()
             .filter(|(i, _)| *i == internal)
             .count();
@@ -472,7 +460,6 @@ mod tests {
 
     fn next_position_via_query(
         eng: &Engine,
-        facts: &Facts,
         iface: &str,
         pos: &str,
         action: &str,
@@ -553,7 +540,7 @@ mod tests {
         ];
 
         let q = Query::or(vec![realization, defer_source_abs]);
-        run_query(eng, facts, &q, &Bindings::default())
+        run_query(eng, &q, &Bindings::default())
             .into_iter()
             .map(|a| {
                 let tp = answer_sym(&a, tgt_pos);
@@ -569,9 +556,8 @@ mod tests {
     #[test]
     fn next_position_direct_transition() {
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let count = eng.interner.find("Count").unwrap();
-        let answers = next_position_via_query(&eng, &facts, "Counter", "Count", "Increment");
+        let answers = next_position_via_query(&eng, "Counter", "Count", "Increment");
         assert_eq!(answers.len(), 1);
         assert_eq!(answers[0].0, count);
         // args is [n + 1]
@@ -581,10 +567,9 @@ mod tests {
     #[test]
     fn next_position_via_internal_realization() {
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let count = eng.interner.find("Count").unwrap();
         let answers = next_position_via_query(
-            &eng, &facts, "Counter::Internal", "Count", "Increment",
+            &eng, "Counter::Internal", "Count", "Increment",
         );
         assert_eq!(answers.len(), 1, "answers={answers:?}");
         assert_eq!(answers[0].0, count);
@@ -592,7 +577,6 @@ mod tests {
 
     fn explain_position_via_query(
         eng: &Engine,
-        facts: &Facts,
         iface: &str,
         pos: &str,
     ) -> (BTreeSet<Sym>, BTreeSet<Sym>, BTreeSet<Sym>) {
@@ -608,7 +592,7 @@ mod tests {
             params: Slot::Anon,
             guard: Slot::Anon,
         }]);
-        let actions: BTreeSet<Sym> = run_query(eng, facts, &actions_q, &Bindings::default())
+        let actions: BTreeSet<Sym> = run_query(eng, &actions_q, &Bindings::default())
             .iter()
             .map(|a| answer_sym(a, action_v))
             .collect();
@@ -630,7 +614,7 @@ mod tests {
                 target_args: Slot::Anon,
             },
         ]);
-        let forward: BTreeSet<Sym> = run_query(eng, facts, &fwd_q, &Bindings::default())
+        let forward: BTreeSet<Sym> = run_query(eng, &fwd_q, &Bindings::default())
             .iter()
             .map(|a| answer_sym(a, fd))
             .collect();
@@ -652,7 +636,7 @@ mod tests {
                 target_args: Slot::Anon,
             },
         ]);
-        let backward: BTreeSet<Sym> = run_query(eng, facts, &bwd_q, &Bindings::default())
+        let backward: BTreeSet<Sym> = run_query(eng, &bwd_q, &Bindings::default())
             .iter()
             .map(|a| answer_sym(a, bd))
             .collect();
@@ -666,9 +650,8 @@ mod tests {
         // (Counter::Run -> Counter); one outbound defer (SetTo10 -> Button).
         // No backward defers.
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let (actions, forward, backward) =
-            explain_position_via_query(&eng, &facts, "Counter::Internal", "Count");
+            explain_position_via_query(&eng, "Counter::Internal", "Count");
         let run = eng.interner.find("Counter::Run").unwrap();
         let setto10 = eng.interner.find("SetTo10").unwrap();
         assert!(actions.is_empty());
@@ -681,9 +664,8 @@ mod tests {
         // Counter at Count: Increment + Decrement directions; no forward
         // defers; one backward defer (Counter::Run from Counter::Internal).
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let (actions, forward, backward) =
-            explain_position_via_query(&eng, &facts, "Counter", "Count");
+            explain_position_via_query(&eng, "Counter", "Count");
         let inc = eng.interner.find("Increment").unwrap();
         let dec = eng.interner.find("Decrement").unwrap();
         let run = eng.interner.find("Counter::Run").unwrap();
@@ -697,9 +679,8 @@ mod tests {
         // Button at Button: one direction (Press); no forward defers; one
         // backward defer (SetTo10 from Counter::Internal).
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let (actions, forward, backward) =
-            explain_position_via_query(&eng, &facts, "Button", "Button");
+            explain_position_via_query(&eng, "Button", "Button");
         let press = eng.interner.find("Press").unwrap();
         let setto10 = eng.interner.find("SetTo10").unwrap();
         assert_eq!(actions, [press].into_iter().collect());
@@ -712,9 +693,8 @@ mod tests {
         // Grid at Cell: four directions (Left, Right, Up, Down); no forward
         // defer; one backward defer (Grid::Run from Grid::Internal).
         let eng = load("examples/grid.poly");
-        let facts = eng.facts();
         let (actions, forward, backward) =
-            explain_position_via_query(&eng, &facts, "Grid", "Cell");
+            explain_position_via_query(&eng, "Grid", "Cell");
         let l = eng.interner.find("Left").unwrap();
         let r = eng.interner.find("Right").unwrap();
         let u = eng.interner.find("Up").unwrap();
@@ -728,10 +708,9 @@ mod tests {
     #[test]
     fn next_position_via_setto10() {
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let count = eng.interner.find("Count").unwrap();
         let answers = next_position_via_query(
-            &eng, &facts, "Counter::Internal", "Count", "Press",
+            &eng, "Counter::Internal", "Count", "Press",
         );
         assert_eq!(answers.len(), 1, "answers={answers:?}");
         assert_eq!(answers[0].0, count);
@@ -742,11 +721,10 @@ mod tests {
     #[test]
     fn locate_action_grid() {
         let eng = load("examples/grid.poly");
-        let facts = eng.facts();
         let grid = eng.interner.find("Grid").unwrap();
         let cell = eng.interner.find("Cell").unwrap();
         for action in ["Left", "Right", "Up", "Down"] {
-            let q = locate_action_via_query(&eng, &facts, action);
+            let q = locate_action_via_query(&eng, action);
             assert_eq!(
                 q,
                 [(grid, cell)].into_iter().collect(),
@@ -780,9 +758,8 @@ mod tests {
     #[test]
     fn decrement_residual_is_symbolic_with_empty_env() {
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let q = decrement_query(&eng);
-        let answers = run_query(&eng, &facts, &q, &Bindings::default());
+        let answers = run_query(&eng, &q, &Bindings::default());
         assert_eq!(answers.len(), 1);
         // Residual is `n > 0` — left symbolic because env is empty.
         let n = eng.interner.find("n").unwrap();
@@ -799,12 +776,11 @@ mod tests {
     #[test]
     fn decrement_residual_collapses_to_true_when_satisfied() {
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let q = decrement_query(&eng);
         let n = eng.interner.find("n").unwrap();
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(3));
-        let answers = run_query(&eng, &facts, &q, &env);
+        let answers = run_query(&eng, &q, &env);
         assert_eq!(answers.len(), 1);
         assert!(answers[0].residual.is_empty(), "residual should be cleared");
     }
@@ -812,12 +788,11 @@ mod tests {
     #[test]
     fn decrement_answer_dropped_when_residual_false() {
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let q = decrement_query(&eng);
         let n = eng.interner.find("n").unwrap();
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(0));
-        let answers = run_query(&eng, &facts, &q, &env);
+        let answers = run_query(&eng, &q, &env);
         assert!(answers.is_empty(), "residual `0 > 0` is false; answer should be dropped");
     }
 
@@ -825,7 +800,6 @@ mod tests {
     fn position_guard_also_lands_in_residual() {
         // Querying Position alone (no direction) picks up the position guard.
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let counter = eng.interner.find("Counter").unwrap();
         let count = eng.interner.find("Count").unwrap();
         let q = Query::single(vec![Goal::Position {
@@ -834,7 +808,7 @@ mod tests {
             params: Slot::Anon,
             guard: Slot::Anon,
         }]);
-        let answers = run_query(&eng, &facts, &q, &Bindings::default());
+        let answers = run_query(&eng, &q, &Bindings::default());
         assert_eq!(answers.len(), 1);
         // Residual is `n >= 0`.
         match &answers[0].residual[..] {
@@ -849,7 +823,6 @@ mod tests {
         // guards picked up automatically. Here we layer `n > 5` on top of
         // Decrement's `n > 0` and resolve both with a concrete env.
         let eng = load("examples/counter.poly");
-        let facts = eng.facts();
         let counter = eng.interner.find("Counter").unwrap();
         let count = eng.interner.find("Count").unwrap();
         let dec = eng.interner.find("Decrement").unwrap();
@@ -873,19 +846,19 @@ mod tests {
         // n=10: both `n > 0` and `n > 5` true → answer kept, residual cleared.
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(10));
-        let answers = run_query(&eng, &facts, &q, &env);
+        let answers = run_query(&eng, &q, &env);
         assert_eq!(answers.len(), 1);
         assert!(answers[0].residual.is_empty());
 
         // n=3: `n > 0` true but `n > 5` false → answer dropped.
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(3));
-        let answers = run_query(&eng, &facts, &q, &env);
+        let answers = run_query(&eng, &q, &env);
         assert!(answers.is_empty());
 
         // No env: the simplifier narrows `n > 0 ∧ n > 5` to the tighter
         // bound `n > 5` (Stage 4 interval narrowing).
-        let answers = run_query(&eng, &facts, &q, &Bindings::default());
+        let answers = run_query(&eng, &q, &Bindings::default());
         assert_eq!(answers.len(), 1);
         match &answers[0].residual[..] {
             [Expr::BinOp(BinOp::Gt, l, r)] => {

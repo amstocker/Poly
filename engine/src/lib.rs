@@ -16,16 +16,15 @@ pub mod types;
 
 pub(crate) mod engine;
 pub(crate) mod eval;
-pub(crate) mod facts;
 pub(crate) mod fmt;
 pub(crate) mod interner;
 pub(crate) mod lower;
 pub(crate) mod parse;
+pub(crate) mod relations;
 pub(crate) mod simplify;
 pub(crate) mod uquery;
 pub(crate) mod validate;
 
 pub use engine::{Engine, EngineError};
-pub use facts::Facts;
 pub use interner::{Interner, Sym};
 pub use types::*;

@@ -1,8 +1,8 @@
 // Embedding-friendly API surface.
 //
-// `Poly` owns the loaded `Engine` and projected `Facts`, and exposes named
-// operations on top of them. Each method maps to a `uquery::Query` internally
-// — callers don't see logic-variable plumbing.
+// `Poly` wraps a loaded `Engine` and exposes named operations on top of it.
+// Each method maps to a `uquery::Query` internally — callers don't see
+// logic-variable plumbing.
 //
 // This is the surface a Rust service consumer depends on. Lower-level
 // modules (`uquery`, `eval`, `simplify`, …) are `pub(crate)` and not
@@ -11,7 +11,6 @@
 use std::collections::BTreeSet;
 
 use crate::eval::Bindings;
-use crate::facts::Facts;
 use crate::types::Expr;
 use crate::uquery::{
     run_query, Answer, Goal, IndexSlot, Query, Slot, Term, Value, VarGen, VarId,
@@ -23,22 +22,18 @@ use crate::{Engine, EngineError, Sym};
 // Top-level handle
 // =============================================================================
 
-/// A loaded Poly program with a projected fact base, ready to query.
+/// A loaded Poly program, ready to query.
 pub struct Poly {
     engine: Engine,
-    facts: Facts,
 }
 
 impl Poly {
-    /// Parse, lower, validate, and project `src` into a queryable handle.
+    /// Parse, lower, and validate `src` into a queryable handle.
     pub fn from_source(src: &str) -> Result<Self, EngineError> {
-        let engine = Engine::load(src)?;
-        let facts = engine.facts();
-        Ok(Self { engine, facts })
+        Ok(Self { engine: Engine::load(src)? })
     }
 
     pub fn engine(&self) -> &Engine { &self.engine }
-    pub fn facts(&self) -> &Facts { &self.facts }
     pub fn resolve(&self, sym: Sym) -> &str { self.engine.resolve(sym) }
 }
 
@@ -135,7 +130,7 @@ impl Poly {
             params: Slot::Anon,
             guard: Slot::Anon,
         }]);
-        let action_answers = run_query(&self.engine, &self.facts, &actions_q, &env);
+        let action_answers = run_query(&self.engine, &actions_q, &env);
         let mut seen: BTreeSet<Sym> = BTreeSet::new();
         let mut actions: Vec<Sym> = Vec::new();
         for a in &action_answers {
@@ -168,7 +163,7 @@ impl Poly {
                 target_args: Slot::Anon,
             },
         ]);
-        let forward: Vec<DeferLink> = run_query(&self.engine, &self.facts, &fwd_q, &env)
+        let forward: Vec<DeferLink> = run_query(&self.engine, &fwd_q, &env)
             .into_iter()
             .map(|ans| DeferLink {
                 defer: sym_of(&ans, fd),
@@ -202,7 +197,7 @@ impl Poly {
                 target_args: Slot::Anon,
             },
         ]);
-        let backward: Vec<DeferLink> = run_query(&self.engine, &self.facts, &bwd_q, &env)
+        let backward: Vec<DeferLink> = run_query(&self.engine, &bwd_q, &env)
             .into_iter()
             .map(|ans| DeferLink {
                 defer: sym_of(&ans, bd),
@@ -248,7 +243,7 @@ impl Poly {
                 guard: Slot::Anon,
             },
         ]);
-        run_query(&self.engine, &self.facts, &q, &Bindings::default())
+        run_query(&self.engine, &q, &Bindings::default())
             .into_iter()
             .map(|ans| ActionLocation {
                 iface: sym_of(&ans, i_v),

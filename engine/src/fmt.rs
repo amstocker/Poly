@@ -284,4 +284,151 @@ impl Engine {
             }
         }
     }
+
+    /// Render the loaded program as Datalog-style facts, one per line,
+    /// grouped by relation. Walks the AST directly via `*_relation()`
+    /// iterators — no intermediate projection.
+    pub fn fmt_facts(&self) -> String {
+        let mut out = String::new();
+        let emit = |buf: &mut String, lines: Vec<String>| {
+            if lines.is_empty() {
+                return;
+            }
+            if !buf.is_empty() {
+                buf.push('\n');
+            }
+            for line in lines {
+                buf.push_str(&line);
+                buf.push('\n');
+            }
+        };
+
+        let lines: Vec<String> = self
+            .schema_record_relation()
+            .map(|(name, fields)| {
+                format!(
+                    "schema_record({}, {}).",
+                    self.resolve(name),
+                    self.fmt_param_list(fields),
+                )
+            })
+            .collect();
+        emit(&mut out, lines);
+
+        let lines: Vec<String> = self
+            .schema_sum_relation()
+            .map(|(name, variants)| {
+                let parts: Vec<String> = variants
+                    .iter()
+                    .map(|v| {
+                        if v.params.is_empty() {
+                            self.resolve(v.name).to_string()
+                        } else {
+                            format!("{}{}", self.resolve(v.name), self.fmt_param_list(&v.params))
+                        }
+                    })
+                    .collect();
+                format!("schema_sum({}, [{}]).", self.resolve(name), parts.join(", "))
+            })
+            .collect();
+        emit(&mut out, lines);
+
+        let lines: Vec<String> = self
+            .iface_relation()
+            .map(|i| format!("iface({}, {}).", self.resolve(i.name), self.fmt_param_list(&i.params)))
+            .collect();
+        emit(&mut out, lines);
+
+        let lines: Vec<String> = self
+            .iface_internal_relation()
+            .map(|(int, ext)| {
+                format!("iface_internal({}, {}).", self.resolve(int), self.resolve(ext))
+            })
+            .collect();
+        emit(&mut out, lines);
+
+        let lines: Vec<String> = self
+            .position_relation()
+            .map(|(i_sym, p)| {
+                format!(
+                    "position({}, {}, {}, {}).",
+                    self.resolve(i_sym),
+                    self.resolve(p.name),
+                    self.fmt_param_list(&p.params),
+                    self.fmt_opt_expr(&p.guard),
+                )
+            })
+            .collect();
+        emit(&mut out, lines);
+
+        let lines: Vec<String> = self
+            .direction_relation()
+            .map(|(i_sym, p_sym, d)| {
+                format!(
+                    "direction({}, {}, {}, {}, {}).",
+                    self.resolve(i_sym),
+                    self.resolve(p_sym),
+                    self.resolve(d.name),
+                    self.fmt_param_list(&d.params),
+                    self.fmt_opt_expr(&d.guard),
+                )
+            })
+            .collect();
+        emit(&mut out, lines);
+
+        let lines: Vec<String> = self
+            .defer_relation()
+            .map(|d| {
+                format!(
+                    "defer({}, {}, {}).",
+                    self.resolve(d.name),
+                    self.resolve(d.source),
+                    self.resolve(d.target),
+                )
+            })
+            .collect();
+        emit(&mut out, lines);
+
+        let lines: Vec<String> = self
+            .defer_entry_relation()
+            .map(|(d_sym, idx, e)| {
+                let tgt_args: Vec<String> =
+                    e.target_args.iter().map(|a| self.fmt_expr(a, PREC_TOP)).collect();
+                format!(
+                    "defer_entry({}, {}, {}, {}, {}, {}, [{}]).",
+                    self.resolve(d_sym),
+                    idx,
+                    self.resolve(e.source_pos),
+                    self.fmt_pattern_list(&e.source_pattern),
+                    self.fmt_opt_expr(&e.source_guard),
+                    self.resolve(e.target_pos),
+                    tgt_args.join(", "),
+                )
+            })
+            .collect();
+        emit(&mut out, lines);
+
+        let lines: Vec<String> = self
+            .defer_dir_relation()
+            .map(|(d_sym, idx, m)| {
+                format!(
+                    "defer_dir({}, {}, {}, {}).",
+                    self.resolve(d_sym),
+                    idx,
+                    self.fmt_dir_ref(&m.target_dir),
+                    self.fmt_dir_ref(&m.source_dir),
+                )
+            })
+            .collect();
+        emit(&mut out, lines);
+
+        out
+    }
+
+    fn fmt_opt_expr(&self, e: &Option<Expr<Sym>>) -> String {
+        match e {
+            None => "_".to_string(),
+            Some(e) => self.fmt_expr(e, PREC_TOP),
+        }
+    }
 }
