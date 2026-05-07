@@ -4,28 +4,45 @@ Open work, with status. Closed items live in the session logs under `log/`.
 
 ## Active
 
-### Query surface syntax
+### Embedding API — grow the named ops
 
-Today: queries are constructed as Rust values (`uquery::Query`), reachable
-from tests and from `main.rs`'s `--explain`/`--locate` flags. The agent-tool
-surface and the friendlier CLI both want a parseable query language.
+`poly_engine::api::Poly` exposes typed Rust ops (`from_source`,
+`explain_position`, `locate_action`) on top of `uquery::Query`. The
+future service is expected to import this crate and call these directly.
 
-Sketch in `log/unified_query.md` §2: logic-variable syntax over the
-relation schema, three styles of binding (bound / free / pattern). Result
-is a list of `Answer { subst, residual }` — the residual is part of the
-answer, not a precondition.
+Next ops to add as motivating examples appear:
 
-Open shape questions:
+- `enabled_actions(iface, position) -> Vec<EnabledAction>` — actions
+  filtered by guard satisfaction at a concrete position; residual `false`
+  drops, residual `true` clears.
+- `next_position(iface, position, action) -> Option<PositionRef>` — Q2
+  via the `::Internal` realization defer. Today reachable as a special
+  case of `explain_position`; promote to its own op once the call site
+  exists.
+- `validate_position(iface, position) -> Validation` — guard check on a
+  proposed concrete state; needed for transactional state-set in the
+  future service.
 
-- Does the query parser share the expression parser with `.poly`? Probably
-  yes (same `Expr<T>` AST, same operators).
-- How are disjuncts written? `or {} {}` blocks, or `;` separators, or one
-  query per disjunct with an explicit union?
+Each op needs an answer to: how does a parameterized position arrive on
+the wire? Today the API takes bare `&str` names; for parameterized ops
+we'll need a typed `PositionRef { name, args }`.
+
+### Query surface syntax (text or JSON)
+
+The Rust API above is the priority. A textual or JSON query surface is
+useful for human exploration and (later) non-Rust consumers; design it
+once the named-op set is stable enough that the wire format is mostly a
+serialization of those ops.
+
+`log/unified_query.md` §2 has the original sketch (logic-variable syntax
+over relation schema). Open shape questions still apply when this lands:
+
+- Does the query parser share the expression parser with `.poly`?
+  Probably yes (same `Expr<T>` AST, same operators).
+- How are disjuncts written? `or {} {}` blocks, or `;` separators, or
+  one query per disjunct with an explicit union?
 - Result rendering: flat tuples vs. grouped (Gap 4 in
   `log/unified_query_stage0.md`). Default to flat; let consumers group.
-
-Acceptance: the existing `--explain`/`--locate` Rust-built queries can be
-written as text and produce identical answers.
 
 ### `state` blocks
 

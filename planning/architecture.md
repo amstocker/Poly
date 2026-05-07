@@ -140,29 +140,56 @@ poly query <file> --explain <iface> <pos>         # actions + forward + backward
 poly query <file> --locate <action>               # iface.position list with residuals
 ```
 
-The `--explain`/`--locate` flags build `uquery::Query` values internally;
-they're a transitional shape until query surface syntax lands.
+The CLI is a thin renderer over `poly_engine::api::Poly` (see below); each
+flag dispatches to one named op.
+
+## Embedding API
+
+`poly_engine::api::Poly` is the public surface for service consumers:
+
+- `Poly::from_source(src) -> Result<Self, EngineError>` — parse + lower +
+  validate + project, in one call.
+- `Poly::explain_position(iface, position) -> Result<ExplainResult, ApiError>`
+  — actions + forward/backward defer links.
+- `Poly::locate_action(action) -> Vec<ActionLocation>` — every `(iface,
+  position)` where the action is enabled, with residual.
+- `Poly::engine() / facts() / resolve()` — escape hatches for renderers.
+
+Result types (`ExplainResult`, `DeferLink`, `ActionLocation`) are typed
+Rust structs with `Sym` and `Expr<Sym>` payloads. JSON serialization is
+intentionally not added yet; it will be a thin layer once the future
+service needs it.
 
 ## Layout
 
-- `src/main.rs` — CLI driver (only). Builds queries; renders answers.
-- `src/engine/types.rs` — `Schema`, `Interface`, `Position`, `Direction`,
-  `Defer`, `DeferEntry`, `Pattern`, `DirRef`, `DirMapping`, `Expr`,
-  `Param`, `Type`, `Decl`. No transition field on `Direction`.
-- `src/engine/interner.rs` — `Sym` + `Interner`.
-- `src/engine/parse.rs` — chumsky parser; comment pre-pass; sugar rewrite
-  (uses parse-internal `RawDirection`/`RawTransition` so transitions
-  never leak past parsing).
-- `src/engine/lower.rs` — `Decl<String>` → `Decl<Sym>`.
-- `src/engine/validate.rs` — defer validation (positions exist, arities
-  match, abstract refs only on `::Internal` source).
-- `src/engine/fmt.rs` — Display impls; round-trip with source.
-- `src/engine/eval.rs` — `Value`, `Bindings`, `const_fold`, `conjoin`.
-- `src/engine/facts.rs` — relation tuples + projection + Datalog rendering.
-- `src/engine/uquery.rs` — query AST + unifier + solver + integration with
-  the simplifier. Tests reduce the legacy Q1/Q2/Q3 queries against this.
-- `src/engine/simplify.rs` — residual reasoner.
-- `src/engine/mod.rs` — `Engine`, `EngineError`, `Engine::load`.
+The repo is a Cargo workspace with two crates:
+
+- `engine/` — `poly-engine`, the library. The active surface for all
+  language/runtime work.
+- `cli/` — `poly`, the binary. Renders results; no engine logic.
+
+Inside `engine/src/`, public modules are `api` and `types`; everything
+else is `pub(crate)`. Top-level re-exports: `Engine`, `EngineError`,
+`Sym`, `Interner`, `Facts`.
+
+- `api.rs` — `Poly` handle and named ops; the embedding surface.
+- `types.rs` — `Schema`, `Interface`, `Position`, `Direction`, `Defer`,
+  `DeferEntry`, `Pattern`, `DirRef`, `DirMapping`, `Expr`, `Param`,
+  `Type`, `Decl`. No transition field on `Direction`.
+- `interner.rs` — `Sym` + `Interner`.
+- `parse.rs` — chumsky parser; comment pre-pass; sugar rewrite (uses
+  parse-internal `RawDirection`/`RawTransition` so transitions never
+  leak past parsing).
+- `lower.rs` — `Decl<String>` → `Decl<Sym>`.
+- `validate.rs` — defer validation (positions exist, arities match,
+  abstract refs only on `::Internal` source).
+- `fmt.rs` — Display impls; round-trip with source.
+- `eval.rs` — `Value`, `Bindings`, `const_fold`, `conjoin`.
+- `facts.rs` — relation tuples + projection + Datalog rendering.
+- `uquery.rs` — query AST + unifier + solver + integration with the
+  simplifier. Tests reduce Q1/Q2/Q3 queries against this.
+- `simplify.rs` — residual reasoner.
+- `engine.rs` — `Engine`, `EngineError`, `Engine::load`.
 
 ## Working hypothesis
 
