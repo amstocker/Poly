@@ -1,7 +1,47 @@
 use chumsky::prelude::*;
 
 use super::{BinOp, Decl, Defer, DeferEntry, DirMapping, DirRef, Direction, Expr, Interface, Param,
-    Pattern, Position, Schema, SchemaBody, Transition, Type, UnOp, Variant};
+    Pattern, Position, Schema, SchemaBody, Type, UnOp, Variant};
+
+
+// ============================================================================
+// Parse-internal types
+//
+// `Action -> NextPos` is parsed into a `RawTransition` attached to a raw
+// direction. The state-machine sugar pass below consumes those transitions
+// and rewrites the interface into (external interface, ::Internal interface,
+// ::Run defer). Transitions never escape this module — `Direction<T>` in the
+// engine has no transition field.
+// ============================================================================
+
+#[derive(Clone)]
+struct RawTransition {
+    target_pos: String,
+    args: Vec<Expr<String>>,
+}
+
+#[derive(Clone)]
+struct RawDirection {
+    name: String,
+    params: Vec<Param<String>>,
+    guard: Option<Expr<String>>,
+    transition: Option<RawTransition>,
+}
+
+#[derive(Clone)]
+struct RawPosition {
+    name: String,
+    params: Vec<Param<String>>,
+    guard: Option<Expr<String>>,
+    directions: Vec<RawDirection>,
+}
+
+#[derive(Clone)]
+struct RawInterface {
+    name: String,
+    params: Vec<Param<String>>,
+    positions: Vec<RawPosition>,
+}
 
 
 // ============================================================================
@@ -203,10 +243,10 @@ fn expr_parser() -> impl Parser<char, Expr<String>, Error = Simple<char>> + Clon
 
 
 // ============================================================================
-// Transition target
+// Transition target (parse-internal)
 // ============================================================================
 
-fn transition_parser() -> impl Parser<char, Transition<String>, Error = Simple<char>> + Clone {
+fn transition_parser() -> impl Parser<char, RawTransition, Error = Simple<char>> + Clone {
     let arg_list = expr_parser()
         .separated_by(just(',').padded_by(ws()))
         .delimited_by(just('[').padded_by(ws()), just(']').padded_by(ws()))
@@ -215,15 +255,15 @@ fn transition_parser() -> impl Parser<char, Transition<String>, Error = Simple<c
 
     ident()
         .then(arg_list)
-        .map(|(target_pos, args)| Transition { target_pos, args })
+        .map(|(target_pos, args)| RawTransition { target_pos, args })
 }
 
 
 // ============================================================================
-// Direction
+// Direction (parse-internal)
 // ============================================================================
 
-fn direction_parser() -> impl Parser<char, Direction<String>, Error = Simple<char>> + Clone {
+fn direction_parser() -> impl Parser<char, RawDirection, Error = Simple<char>> + Clone {
     ident()
         .then(param_list())
         .then(keyword("if").ignore_then(expr_parser()).or_not())
@@ -233,7 +273,7 @@ fn direction_parser() -> impl Parser<char, Direction<String>, Error = Simple<cha
                 .ignore_then(transition_parser())
                 .or_not(),
         )
-        .map(|(((name, params), guard), transition)| Direction {
+        .map(|(((name, params), guard), transition)| RawDirection {
             name,
             params,
             guard,
@@ -243,10 +283,10 @@ fn direction_parser() -> impl Parser<char, Direction<String>, Error = Simple<cha
 
 
 // ============================================================================
-// Position
+// Position (parse-internal)
 // ============================================================================
 
-fn position_parser() -> impl Parser<char, Position<String>, Error = Simple<char>> + Clone {
+fn position_parser() -> impl Parser<char, RawPosition, Error = Simple<char>> + Clone {
     ident()
         .then(param_list())
         .then(keyword("if").ignore_then(expr_parser()).or_not())
@@ -257,7 +297,7 @@ fn position_parser() -> impl Parser<char, Position<String>, Error = Simple<char>
                 .or_not()
                 .map(|opt| opt.unwrap_or_default()),
         )
-        .map(|(((name, params), guard), directions)| Position {
+        .map(|(((name, params), guard), directions)| RawPosition {
             name,
             params,
             guard,
@@ -276,8 +316,8 @@ fn interface_decls() -> impl Parser<char, Vec<Decl<String>>, Error = Simple<char
         .delimited_by(just('{').padded_by(ws()), just('}').padded_by(ws()));
 
     enum Body {
-        Positions(Vec<Position<String>>),
-        SingleState(Vec<Direction<String>>),
+        Positions(Vec<RawPosition>),
+        SingleState(Vec<RawDirection>),
     }
 
     let body = single_state_body
@@ -291,51 +331,52 @@ fn interface_decls() -> impl Parser<char, Vec<Decl<String>>, Error = Simple<char
         .map(|((name, params), body)| {
             let positions = match body {
                 Body::Positions(ps) => ps,
-                Body::SingleState(directions) => vec![Position {
+                Body::SingleState(directions) => vec![RawPosition {
                     name: name.clone(),
                     params: Vec::new(),
                     guard: None,
                     directions,
                 }],
             };
-            let iface = Interface { name, params, positions };
-            desugar_interface(iface)
+            desugar_interface(RawInterface { name, params, positions })
         })
 }
 
-fn desugar_interface(iface: Interface<String>) -> Vec<Decl<String>> {
+fn finalize_direction(d: &RawDirection) -> Direction<String> {
+    Direction {
+        name: d.name.clone(),
+        params: d.params.clone(),
+        guard: d.guard.clone(),
+    }
+}
+
+fn finalize_position(p: &RawPosition) -> Position<String> {
+    Position {
+        name: p.name.clone(),
+        params: p.params.clone(),
+        guard: p.guard.clone(),
+        directions: p.directions.iter().map(finalize_direction).collect(),
+    }
+}
+
+fn desugar_interface(iface: RawInterface) -> Vec<Decl<String>> {
     let has_transitions = iface
         .positions
         .iter()
         .any(|p| p.directions.iter().any(|d| d.transition.is_some()));
 
     if !has_transitions {
-        return vec![Decl::Interface(iface)];
+        return vec![Decl::Interface(Interface {
+            name: iface.name,
+            params: iface.params,
+            positions: iface.positions.iter().map(finalize_position).collect(),
+        })];
     }
 
-    let external_positions: Vec<Position<String>> = iface
-        .positions
-        .iter()
-        .map(|p| Position {
-            name: p.name.clone(),
-            params: p.params.clone(),
-            guard: p.guard.clone(),
-            directions: p
-                .directions
-                .iter()
-                .map(|d| Direction {
-                    name: d.name.clone(),
-                    params: d.params.clone(),
-                    guard: d.guard.clone(),
-                    transition: None,
-                })
-                .collect(),
-        })
-        .collect();
     let external = Interface {
         name: iface.name.clone(),
         params: iface.params.clone(),
-        positions: external_positions,
+        positions: iface.positions.iter().map(finalize_position).collect(),
     };
 
     let internal_positions: Vec<Position<String>> = iface

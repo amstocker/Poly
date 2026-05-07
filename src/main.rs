@@ -1,7 +1,11 @@
 mod engine;
 
-use engine::eval::{Bindings, Value};
-use engine::{Engine, EngineError, SchemaBody};
+use engine::eval::Bindings;
+use engine::facts::Facts;
+use engine::uquery::{
+    run_query, Answer, Goal, IndexSlot, Query, Slot, Term, Value, VarGen, VarId,
+};
+use engine::{Engine, EngineError, Sym};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -20,10 +24,7 @@ fn run_cli(args: &[String]) -> i32 {
     match cmd {
         "show" => cmd_show(rest),
         "facts" => cmd_facts(rest),
-        "explain" => cmd_explain(rest),
-        "locate" => cmd_locate(rest),
-        "actions" => cmd_actions(rest),
-        "step" => cmd_step(rest),
+        "query" => cmd_query(rest),
         "help" | "-h" | "--help" => {
             print_usage();
             0
@@ -43,22 +44,16 @@ fn print_usage() {
       Print all schemas, interfaces, and defers in <file>.
 
   poly facts <file>
-      Project <file> into the relation tuples used by the (in-progress)
-      query layer. One Datalog-style fact per line.
+      Project <file> into the relation tuples used by the query layer.
+      One Datalog-style fact per line.
 
-  poly explain <file> <interface> <position>
-      Show what is determined elsewhere when <interface> is at <position>.
+  poly query <file> --explain <interface> <position>
+      Show what is determined elsewhere when <interface> is at <position>:
+      available actions plus forward and backward defer links.
 
-  poly locate <file> <action>
-      List every (interface, position) where <action> is available.
-
-  poly actions <file> <interface> <position>
-      List the actions available at <interface>.<position>.
-
-  poly step <file> <interface> <position> <action> [name=value ...]
-      Apply <action> at <interface>.<position> with the given parameter
-      bindings; print the resulting position and bindings. Values may be
-      integers, true/false, or quoted strings.
+  poly query <file> --locate <action>
+      List every (interface, position) where <action> is available, with
+      its enabling residual constraint (if any).
 
   poly help
       Print this message."
@@ -125,198 +120,231 @@ fn cmd_facts(args: &[String]) -> i32 {
     0
 }
 
-fn cmd_explain(args: &[String]) -> i32 {
-    let (path, iface, pos) = match args {
-        [p, i, q] => (p, i, q),
-        _ => {
-            eprintln!("usage: poly explain <file> <interface> <position>");
+
+// ============================================================================
+// `poly query` — single entry point dispatching to the unified query engine.
+//
+// The flag-based subcommands (`--explain`, `--locate`) build `uquery::Query`
+// values internally. They will be subsumed by a query surface syntax
+// (Stage 3 of `planning/roadmap.md`); until then this gives the CLI a
+// single command that uses the relational engine directly.
+// ============================================================================
+
+fn cmd_query(args: &[String]) -> i32 {
+    let (path, rest) = match args.split_first() {
+        Some((p, r)) => (p.as_str(), r),
+        None => {
+            eprintln!("usage: poly query <file> --explain <interface> <position>");
+            eprintln!("       poly query <file> --locate <action>");
             return 1;
         }
     };
     let Some(eng) = load(path) else { return 1 };
-    match eng.explain_position(iface, pos) {
-        Ok(exp) => {
-            print!("{}", eng.fmt_position_explanation(&exp));
-            0
-        }
-        Err(err) => {
-            eprintln!("{}", eng.fmt_query_error(&err));
+    let facts = eng.facts();
+    match rest.split_first() {
+        Some((flag, tail)) if flag == "--explain" => match tail {
+            [iface, pos] => run_explain(&eng, &facts, iface, pos),
+            _ => {
+                eprintln!("usage: poly query <file> --explain <interface> <position>");
+                1
+            }
+        },
+        Some((flag, tail)) if flag == "--locate" => match tail {
+            [action] => run_locate(&eng, &facts, action),
+            _ => {
+                eprintln!("usage: poly query <file> --locate <action>");
+                1
+            }
+        },
+        _ => {
+            eprintln!("usage: poly query <file> --explain <interface> <position>");
+            eprintln!("       poly query <file> --locate <action>");
             1
         }
     }
 }
 
-fn cmd_locate(args: &[String]) -> i32 {
-    let (path, action) = match args {
-        [p, a] => (p, a),
-        _ => {
-            eprintln!("usage: poly locate <file> <action>");
-            return 1;
-        }
+fn run_explain(eng: &Engine, facts: &Facts, iface: &str, pos: &str) -> i32 {
+    let Some(i_sym) = eng.interner.find(iface) else {
+        eprintln!("unknown interface: {iface}");
+        return 1;
     };
-    let Some(eng) = load(path) else { return 1 };
-    let locs = eng.locate_action(action);
-    print!("{}", eng.fmt_action_locations(&locs));
-    if locs.locations.is_empty() {
-        1
-    } else {
-        0
-    }
-}
-
-fn cmd_step(args: &[String]) -> i32 {
-    let (path, iface, pos, action, rest) = match args {
-        [p, i, q, a, rest @ ..] => (p, i, q, a, rest),
-        _ => {
-            eprintln!("usage: poly step <file> <interface> <position> <action> [name=value ...]");
-            return 1;
-        }
+    let Some(p_sym) = eng.interner.find(pos) else {
+        eprintln!("unknown position: {iface}.{pos}");
+        return 1;
     };
-    let Some(eng) = load(path) else { return 1 };
-    let mut bindings: Bindings = std::collections::BTreeMap::new();
-    for kv in rest {
-        let Some((k, v)) = kv.split_once('=') else {
-            eprintln!("expected name=value, got: {kv}");
-            return 1;
-        };
-        let Some(key) = eng.interner.find(k) else {
-            eprintln!("unknown parameter: {k}");
-            return 1;
-        };
-        match parse_value(&eng, v) {
-            Ok(val) => { bindings.insert(key, val); }
-            Err(msg) => {
-                eprintln!("could not parse value for {k}: {msg}");
-                return 1;
+    if !eng.interfaces.contains_key(&i_sym) {
+        eprintln!("unknown interface: {iface}");
+        return 1;
+    }
+    let env = Bindings::default();
+
+    // Available actions at (iface, pos).
+    let mut g = VarGen::new();
+    let action_v = g.fresh();
+    let actions_q = Query::single(vec![Goal::Direction {
+        iface: Term::Sym(i_sym),
+        position: Term::Sym(p_sym),
+        action: Term::Var(action_v),
+        params: Slot::Anon,
+        guard: Slot::Anon,
+    }]);
+    let actions = run_query(eng, facts, &actions_q, &env);
+
+    // Forward defer links (this iface as defer source, position as src).
+    let mut g = VarGen::new();
+    let fd = g.fresh();
+    let f_tgt = g.fresh();
+    let f_entry = g.fresh();
+    let f_tgt_pos = g.fresh();
+    let fwd_q = Query::single(vec![
+        Goal::Defer {
+            defer: Term::Var(fd),
+            source: Term::Sym(i_sym),
+            target: Term::Var(f_tgt),
+        },
+        Goal::DeferEntry {
+            defer: Term::Var(fd),
+            entry_idx: IndexSlot::Var(f_entry),
+            source_pos: Term::Sym(p_sym),
+            src_pattern: Slot::Anon,
+            src_guard: Slot::Anon,
+            target_pos: Term::Var(f_tgt_pos),
+            target_args: Slot::Anon,
+        },
+    ]);
+    let forward = run_query(eng, facts, &fwd_q, &env);
+
+    // Backward defer links (this iface as defer target, position as tgt).
+    let mut g = VarGen::new();
+    let bd = g.fresh();
+    let b_src = g.fresh();
+    let b_entry = g.fresh();
+    let b_src_pos = g.fresh();
+    let bwd_q = Query::single(vec![
+        Goal::Defer {
+            defer: Term::Var(bd),
+            source: Term::Var(b_src),
+            target: Term::Sym(i_sym),
+        },
+        Goal::DeferEntry {
+            defer: Term::Var(bd),
+            entry_idx: IndexSlot::Var(b_entry),
+            source_pos: Term::Var(b_src_pos),
+            src_pattern: Slot::Anon,
+            src_guard: Slot::Anon,
+            target_pos: Term::Sym(p_sym),
+            target_args: Slot::Anon,
+        },
+    ]);
+    let backward = run_query(eng, facts, &bwd_q, &env);
+
+    println!("{iface} at {pos}");
+    print!("  available actions: {{");
+    let mut seen: std::collections::BTreeSet<Sym> = std::collections::BTreeSet::new();
+    let mut first = true;
+    for a in &actions {
+        if let Some(Value::Sym(s)) = a.subst.get(&action_v) {
+            if seen.insert(*s) {
+                if !first { print!(", "); }
+                print!("{}", eng.resolve(*s));
+                first = false;
             }
         }
     }
-    match eng.next_position(iface, pos, action, bindings) {
-        Ok(step) => {
-            print!("{}", eng.fmt_step(&step));
-            0
-        }
-        Err(err) => {
-            eprintln!("{}", eng.fmt_query_error(&err));
-            1
+    println!("}}");
+
+    if !forward.is_empty() {
+        println!();
+        println!("  forward defers:");
+        for ans in &forward {
+            let d = sym_of(&ans, fd);
+            let t = sym_of(&ans, f_tgt);
+            let tp = sym_of(&ans, f_tgt_pos);
+            println!(
+                "    {} : {} -> {} ({}.{} -> {}.{})",
+                eng.resolve(d), eng.resolve(i_sym), eng.resolve(t),
+                eng.resolve(i_sym), eng.resolve(p_sym),
+                eng.resolve(t), eng.resolve(tp),
+            );
+            print_residual(eng, ans, "      ");
         }
     }
+
+    if !backward.is_empty() {
+        println!();
+        println!("  backward defers:");
+        for ans in &backward {
+            let d = sym_of(&ans, bd);
+            let s = sym_of(&ans, b_src);
+            let sp = sym_of(&ans, b_src_pos);
+            println!(
+                "    {} : {} -> {} ({}.{} -> {}.{})",
+                eng.resolve(d), eng.resolve(s), eng.resolve(i_sym),
+                eng.resolve(s), eng.resolve(sp),
+                eng.resolve(i_sym), eng.resolve(p_sym),
+            );
+            print_residual(eng, ans, "      ");
+        }
+    }
+
+    0
 }
 
-fn parse_value(eng: &Engine, s: &str) -> Result<Value, String> {
-    let s = s.trim();
-    if let Ok(n) = s.parse::<i64>() {
-        return Ok(Value::Int(n));
-    }
-    if s == "true" {
-        return Ok(Value::Bool(true));
-    }
-    if s == "false" {
-        return Ok(Value::Bool(false));
-    }
-    if let Some((name, args_str)) = parse_construct_head(s) {
-        let key = eng
-            .interner
-            .find(name)
-            .ok_or_else(|| format!("unknown schema: {name}"))?;
-        let schema = eng
-            .schemas
-            .get(&key)
-            .ok_or_else(|| format!("unknown schema: {name}"))?;
-        let params = match &schema.body {
-            SchemaBody::Record(ps) => ps,
-            SchemaBody::Sum(_) => {
-                return Err(format!("sum constructors not yet supported: {name}"));
-            }
-        };
-        let arg_strs = split_top_commas(args_str)?;
-        if arg_strs.len() != params.len() {
-            return Err(format!(
-                "{name} expects {} arg(s), got {}",
-                params.len(),
-                arg_strs.len(),
-            ));
-        }
-        let mut fields: std::collections::BTreeMap<engine::Sym, Value> =
-            std::collections::BTreeMap::new();
-        for (p, arg) in params.iter().zip(arg_strs.iter()) {
-            fields.insert(p.name, parse_value(eng, arg)?);
-        }
-        return Ok(Value::Record { schema: key, fields });
-    }
-    let trimmed = s.trim_matches('"');
-    Ok(Value::Str(trimmed.to_string()))
-}
-
-fn parse_construct_head(s: &str) -> Option<(&str, &str)> {
-    let open = s.find('(')?;
-    if !s.ends_with(')') {
-        return None;
-    }
-    let name = s[..open].trim();
-    if name.is_empty() {
-        return None;
-    }
-    if !name.chars().next().unwrap().is_alphabetic() {
-        return None;
-    }
-    if !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-        return None;
-    }
-    let inner = &s[open + 1..s.len() - 1];
-    Some((name, inner))
-}
-
-fn split_top_commas(s: &str) -> Result<Vec<&str>, String> {
-    let s = s.trim();
-    if s.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    let mut depth = 0i32;
-    let mut start = 0usize;
-    for (i, c) in s.char_indices() {
-        match c {
-            '(' => depth += 1,
-            ')' => {
-                depth -= 1;
-                if depth < 0 {
-                    return Err("unbalanced parentheses".to_string());
-                }
-            }
-            ',' if depth == 0 => {
-                out.push(s[start..i].trim());
-                start = i + c.len_utf8();
-            }
-            _ => {}
-        }
-    }
-    if depth != 0 {
-        return Err("unbalanced parentheses".to_string());
-    }
-    out.push(s[start..].trim());
-    Ok(out)
-}
-
-fn cmd_actions(args: &[String]) -> i32 {
-    let (path, iface, pos) = match args {
-        [p, i, q] => (p, i, q),
-        _ => {
-            eprintln!("usage: poly actions <file> <interface> <position>");
-            return 1;
-        }
+fn run_locate(eng: &Engine, facts: &Facts, action: &str) -> i32 {
+    let Some(a_sym) = eng.interner.find(action) else {
+        println!("action `{action}` is not available at any position");
+        return 1;
     };
-    let Some(eng) = load(path) else { return 1 };
-    match eng.explain_position(iface, pos) {
-        Ok(exp) => {
-            for a in &exp.actions {
-                println!("{}", eng.resolve(*a));
-            }
-            0
-        }
-        Err(err) => {
-            eprintln!("{}", eng.fmt_query_error(&err));
-            1
-        }
+    let mut g = VarGen::new();
+    let i_v = g.fresh();
+    let p_v = g.fresh();
+    let q = Query::single(vec![
+        Goal::Direction {
+            iface: Term::Var(i_v),
+            position: Term::Var(p_v),
+            action: Term::Sym(a_sym),
+            params: Slot::Anon,
+            guard: Slot::Anon,
+        },
+        Goal::Position {
+            iface: Term::Var(i_v),
+            position: Term::Var(p_v),
+            params: Slot::Anon,
+            guard: Slot::Anon,
+        },
+    ]);
+    let answers = run_query(eng, facts, &q, &Bindings::default());
+    if answers.is_empty() {
+        println!("action `{action}` is not available at any position");
+        return 1;
     }
+    println!("action `{action}` is available at:");
+    for ans in &answers {
+        let i = sym_of(&ans, i_v);
+        let p = sym_of(&ans, p_v);
+        print!("  {}.{}", eng.resolve(i), eng.resolve(p));
+        if !ans.residual.is_empty() {
+            let parts: Vec<String> =
+                ans.residual.iter().map(|e| eng.fmt_expr(e, 0)).collect();
+            print!(" if ({})", parts.join(" and "));
+        }
+        println!();
+    }
+    0
+}
+
+fn sym_of(ans: &Answer, v: VarId) -> Sym {
+    match ans.subst.get(&v) {
+        Some(Value::Sym(s)) => *s,
+        _ => panic!("expected Sym binding for variable"),
+    }
+}
+
+fn print_residual(eng: &Engine, ans: &Answer, indent: &str) {
+    if ans.residual.is_empty() {
+        return;
+    }
+    let parts: Vec<String> = ans.residual.iter().map(|e| eng.fmt_expr(e, 0)).collect();
+    println!("{indent}if ({})", parts.join(" and "));
 }

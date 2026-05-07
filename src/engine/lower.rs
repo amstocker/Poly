@@ -54,19 +54,11 @@ fn lower_expr(e: Expr<String>, interner: &mut Interner) -> Expr<Sym> {
     }
 }
 
-fn lower_transition(t: Transition<String>, interner: &mut Interner) -> Transition<Sym> {
-    Transition {
-        target_pos: interner.intern(&t.target_pos),
-        args: t.args.into_iter().map(|e| lower_expr(e, interner)).collect(),
-    }
-}
-
 fn lower_direction(d: Direction<String>, interner: &mut Interner) -> Direction<Sym> {
     Direction {
         name: interner.intern(&d.name),
         params: lower_params(d.params, interner),
         guard: d.guard.map(|g| lower_expr(g, interner)),
-        transition: d.transition.map(|t| lower_transition(t, interner)),
     }
 }
 

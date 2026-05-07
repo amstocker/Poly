@@ -1,3 +1,9 @@
+// The query AST below (Term, Slot, IndexSlot, DirRefPat, Goal, Query) is
+// part of the library API. Variants reachable only from tests or from the
+// not-yet-landed surface-syntax parser would otherwise show as dead from
+// the binary build.
+#![allow(dead_code)]
+
 use std::collections::BTreeMap;
 
 use super::eval::{conjoin, Bindings};
@@ -60,9 +66,6 @@ pub enum Goal {
     Position { iface: Term, position: Term, params: Slot, guard: Slot },
     Direction {
         iface: Term, position: Term, action: Term, params: Slot, guard: Slot,
-    },
-    Transition {
-        iface: Term, position: Term, action: Term, target_pos: Term, args: Slot,
     },
     Defer { defer: Term, source: Term, target: Term },
     DeferEntry {
@@ -295,18 +298,6 @@ fn match_goal(goal: &Goal, facts: &Facts, ans: &Answer) -> Vec<Answer> {
                 Some(next)
             })
             .collect(),
-        Goal::Transition { iface, position, action, target_pos, args } => facts
-            .transitions
-            .iter()
-            .filter_map(|f| {
-                let s = unify_term(iface, f.iface, &ans.subst)?;
-                let s = unify_term(position, f.position, &s)?;
-                let s = unify_term(action, f.action, &s)?;
-                let s = unify_term(target_pos, f.target_pos, &s)?;
-                let s = unify_slot(args, Value::Args(f.args.clone()), &s)?;
-                Some(ans.with_subst(s))
-            })
-            .collect(),
         Goal::Defer { defer, source, target } => facts
             .defers
             .iter()
@@ -445,23 +436,35 @@ mod tests {
             .collect()
     }
 
-    fn locate_action_native(eng: &Engine, action: &str) -> BTreeSet<(Sym, Sym)> {
-        eng.locate_action(action)
-            .locations
-            .iter()
-            .map(|l| (l.interface, l.position))
-            .collect()
-    }
-
     #[test]
-    fn locate_action_matches_native_counter() {
+    fn locate_action_counter() {
         let eng = load("examples/counter.poly");
         let facts = eng.facts();
-        for action in ["Increment", "Decrement", "Press"] {
-            let q = locate_action_via_query(&eng, &facts, action);
-            let n = locate_action_native(&eng, action);
-            assert_eq!(q, n, "mismatch for action={action}");
-        }
+        let count = eng.interner.find("Count").unwrap();
+        let counter = eng.interner.find("Counter").unwrap();
+        let internal = eng.interner.find("Counter::Internal").unwrap();
+        let button = eng.interner.find("Button").unwrap();
+
+        // Increment lives on the external Counter only.
+        let inc = locate_action_via_query(&eng, &facts, "Increment");
+        assert_eq!(inc, [(counter, count)].into_iter().collect());
+
+        // Decrement: same.
+        let dec = locate_action_via_query(&eng, &facts, "Decrement");
+        assert_eq!(dec, [(counter, count)].into_iter().collect());
+
+        // Press lives on Button.Button. Counter::Internal has no directions of
+        // its own (universal-state-machine carrier), so Press doesn't surface
+        // there even though SetTo10 wires it through abstractly.
+        let press = locate_action_via_query(&eng, &facts, "Press");
+        assert_eq!(press, [(button, button)].into_iter().collect());
+
+        // The internal carrier has empty directions.
+        let on_internal = locate_action_via_query(&eng, &facts, "Increment")
+            .iter()
+            .filter(|(i, _)| *i == internal)
+            .count();
+        assert_eq!(on_internal, 0);
     }
 
     fn next_position_via_query(
@@ -654,52 +657,69 @@ mod tests {
         (actions, forward, backward)
     }
 
-    fn explain_position_native(
-        eng: &Engine,
-        iface: &str,
-        pos: &str,
-    ) -> (BTreeSet<Sym>, BTreeSet<Sym>, BTreeSet<Sym>) {
-        let exp = eng.explain_position(iface, pos).unwrap();
-        let actions: BTreeSet<Sym> = exp.actions.iter().copied().collect();
-        let forward: BTreeSet<Sym> = exp.forward.iter().map(|f| f.defer).collect();
-        let backward: BTreeSet<Sym> = exp.backward.iter().map(|b| b.defer).collect();
-        (actions, forward, backward)
-    }
-
     #[test]
     fn explain_position_counter_internal_count() {
+        // Counter::Internal at Count: no own directions; one forward defer
+        // (Counter::Run -> Counter); one outbound defer (SetTo10 -> Button).
+        // No backward defers.
         let eng = load("examples/counter.poly");
         let facts = eng.facts();
-        let q = explain_position_via_query(&eng, &facts, "Counter::Internal", "Count");
-        let n = explain_position_native(&eng, "Counter::Internal", "Count");
-        assert_eq!(q, n);
+        let (actions, forward, backward) =
+            explain_position_via_query(&eng, &facts, "Counter::Internal", "Count");
+        let run = eng.interner.find("Counter::Run").unwrap();
+        let setto10 = eng.interner.find("SetTo10").unwrap();
+        assert!(actions.is_empty());
+        assert_eq!(forward, [run, setto10].into_iter().collect());
+        assert!(backward.is_empty());
     }
 
     #[test]
     fn explain_position_counter_count() {
+        // Counter at Count: Increment + Decrement directions; no forward
+        // defers; one backward defer (Counter::Run from Counter::Internal).
         let eng = load("examples/counter.poly");
         let facts = eng.facts();
-        let q = explain_position_via_query(&eng, &facts, "Counter", "Count");
-        let n = explain_position_native(&eng, "Counter", "Count");
-        assert_eq!(q, n);
+        let (actions, forward, backward) =
+            explain_position_via_query(&eng, &facts, "Counter", "Count");
+        let inc = eng.interner.find("Increment").unwrap();
+        let dec = eng.interner.find("Decrement").unwrap();
+        let run = eng.interner.find("Counter::Run").unwrap();
+        assert_eq!(actions, [inc, dec].into_iter().collect());
+        assert!(forward.is_empty());
+        assert_eq!(backward, [run].into_iter().collect());
     }
 
     #[test]
     fn explain_position_button_button() {
+        // Button at Button: one direction (Press); no forward defers; one
+        // backward defer (SetTo10 from Counter::Internal).
         let eng = load("examples/counter.poly");
         let facts = eng.facts();
-        let q = explain_position_via_query(&eng, &facts, "Button", "Button");
-        let n = explain_position_native(&eng, "Button", "Button");
-        assert_eq!(q, n);
+        let (actions, forward, backward) =
+            explain_position_via_query(&eng, &facts, "Button", "Button");
+        let press = eng.interner.find("Press").unwrap();
+        let setto10 = eng.interner.find("SetTo10").unwrap();
+        assert_eq!(actions, [press].into_iter().collect());
+        assert!(forward.is_empty());
+        assert_eq!(backward, [setto10].into_iter().collect());
     }
 
     #[test]
     fn explain_position_grid_cell() {
+        // Grid at Cell: four directions (Left, Right, Up, Down); no forward
+        // defer; one backward defer (Grid::Run from Grid::Internal).
         let eng = load("examples/grid.poly");
         let facts = eng.facts();
-        let q = explain_position_via_query(&eng, &facts, "Grid", "Cell");
-        let n = explain_position_native(&eng, "Grid", "Cell");
-        assert_eq!(q, n);
+        let (actions, forward, backward) =
+            explain_position_via_query(&eng, &facts, "Grid", "Cell");
+        let l = eng.interner.find("Left").unwrap();
+        let r = eng.interner.find("Right").unwrap();
+        let u = eng.interner.find("Up").unwrap();
+        let d = eng.interner.find("Down").unwrap();
+        let run = eng.interner.find("Grid::Run").unwrap();
+        assert_eq!(actions, [l, r, u, d].into_iter().collect());
+        assert!(forward.is_empty());
+        assert_eq!(backward, [run].into_iter().collect());
     }
 
     #[test]
@@ -717,13 +737,18 @@ mod tests {
     }
 
     #[test]
-    fn locate_action_matches_native_grid() {
+    fn locate_action_grid() {
         let eng = load("examples/grid.poly");
         let facts = eng.facts();
+        let grid = eng.interner.find("Grid").unwrap();
+        let cell = eng.interner.find("Cell").unwrap();
         for action in ["Left", "Right", "Up", "Down"] {
             let q = locate_action_via_query(&eng, &facts, action);
-            let n = locate_action_native(&eng, action);
-            assert_eq!(q, n, "mismatch for action={action}");
+            assert_eq!(
+                q,
+                [(grid, cell)].into_iter().collect(),
+                "mismatch for action={action}"
+            );
         }
     }
 

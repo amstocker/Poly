@@ -30,18 +30,6 @@ fn bin_str(op: BinOp) -> &'static str {
 }
 
 impl Engine {
-    pub fn show_schema(&self, sym: Sym) -> Option<String> {
-        self.schemas.get(&sym).map(|s| self.fmt_schema(s))
-    }
-
-    pub fn show_interface(&self, sym: Sym) -> Option<String> {
-        self.interfaces.get(&sym).map(|i| self.fmt_interface(i))
-    }
-
-    pub fn show_defer(&self, sym: Sym) -> Option<String> {
-        self.defers.iter().find(|d| d.name == sym).map(|d| self.fmt_defer(d))
-    }
-
     pub fn fmt_schema(&self, s: &Schema<Sym>) -> String {
         let mut out = format!("schema {}", self.resolve(s.name));
         match &s.body {
@@ -74,7 +62,7 @@ impl Engine {
             let all_simple = pos
                 .directions
                 .iter()
-                .all(|d| d.params.is_empty() && d.guard.is_none() && d.transition.is_none());
+                .all(|d| d.params.is_empty() && d.guard.is_none());
             if all_simple {
                 out.push_str(&format!("\n    {{ {} }}", names.join(", ")));
             } else {
@@ -209,7 +197,7 @@ impl Engine {
             let all_simple = pos
                 .directions
                 .iter()
-                .all(|d| d.params.is_empty() && d.guard.is_none() && d.transition.is_none());
+                .all(|d| d.params.is_empty() && d.guard.is_none());
             if all_simple {
                 let names: Vec<&str> =
                     pos.directions.iter().map(|d| self.resolve(d.name)).collect();
@@ -233,18 +221,6 @@ impl Engine {
         }
         if let Some(g) = &dir.guard {
             out.push_str(&format!(" if ({})", self.fmt_expr(g, PREC_TOP)));
-        }
-        if let Some(t) = &dir.transition {
-            out.push_str(&format!(" -> {}", self.fmt_transition(t)));
-        }
-        out
-    }
-
-    fn fmt_transition(&self, t: &Transition<Sym>) -> String {
-        let mut out = self.resolve(t.target_pos).to_string();
-        if !t.args.is_empty() {
-            let parts: Vec<String> = t.args.iter().map(|e| self.fmt_expr(e, PREC_TOP)).collect();
-            out.push_str(&format!("[{}]", parts.join(", ")));
         }
         out
     }

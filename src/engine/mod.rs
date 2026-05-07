@@ -4,7 +4,6 @@ pub mod fmt;
 pub mod interner;
 pub mod lower;
 pub mod parse;
-pub mod query;
 pub mod simplify;
 pub mod types;
 pub mod uquery;

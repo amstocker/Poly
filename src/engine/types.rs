@@ -91,24 +91,6 @@ pub struct Direction<T> {
     pub name: T,
     pub params: Vec<Param<T>>,
     pub guard: Option<Expr<T>>,
-    pub transition: Option<Transition<T>>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Transition<T> {
-    pub target_pos: T,
-    pub args: Vec<Expr<T>>,
-}
-
-impl<T> Interface<T> {
-    pub fn is_parameterized(&self) -> bool {
-        !self.params.is_empty()
-            || self.positions.iter().any(|p| {
-                !p.params.is_empty()
-                    || p.guard.is_some()
-                    || p.directions.iter().any(|d| !d.params.is_empty() || d.guard.is_some())
-            })
-    }
 }
 
 impl<T: PartialEq> Interface<T> {

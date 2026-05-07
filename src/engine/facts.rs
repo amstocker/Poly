@@ -47,15 +47,6 @@ pub struct DirectionFact {
 }
 
 #[derive(Clone, Debug)]
-pub struct TransitionFact {
-    pub iface: Sym,
-    pub position: Sym,
-    pub action: Sym,
-    pub target_pos: Sym,
-    pub args: Vec<Expr<Sym>>,
-}
-
-#[derive(Clone, Debug)]
 pub struct DeferFact {
     pub defer: Sym,
     pub source: Sym,
@@ -94,7 +85,6 @@ pub struct Facts {
     pub iface_internals: Vec<IfaceInternalFact>,
     pub positions: Vec<PositionFact>,
     pub directions: Vec<DirectionFact>,
-    pub transitions: Vec<TransitionFact>,
     pub defers: Vec<DeferFact>,
     pub defer_entries: Vec<DeferEntryFact>,
     pub defer_dirs: Vec<DeferDirFact>,
@@ -159,15 +149,6 @@ impl Engine {
                         params: dir.params.clone(),
                         guard: dir.guard.clone(),
                     });
-                    if let Some(t) = &dir.transition {
-                        f.transitions.push(TransitionFact {
-                            iface: iface.name,
-                            position: pos.name,
-                            action: dir.name,
-                            target_pos: t.target_pos,
-                            args: t.args.clone(),
-                        });
-                    }
                 }
             }
         }
@@ -204,7 +185,7 @@ impl Engine {
 
     pub fn fmt_facts(&self, facts: &Facts) -> String {
         let mut out = String::new();
-        let mut emit = |buf: &mut String, lines: Vec<String>| {
+        let emit = |buf: &mut String, lines: Vec<String>| {
             if lines.is_empty() {
                 return;
             }
@@ -302,24 +283,6 @@ impl Engine {
                     self.resolve(d.action),
                     self.fmt_param_list(&d.params),
                     self.fmt_opt_expr(&d.guard),
-                )
-            })
-            .collect();
-        emit(&mut out, lines);
-
-        let lines: Vec<String> = facts
-            .transitions
-            .iter()
-            .map(|t| {
-                let args: Vec<String> =
-                    t.args.iter().map(|a| self.fmt_expr(a, PREC_TOP)).collect();
-                format!(
-                    "transition({}, {}, {}, {}, [{}]).",
-                    self.resolve(t.iface),
-                    self.resolve(t.position),
-                    self.resolve(t.action),
-                    self.resolve(t.target_pos),
-                    args.join(", "),
                 )
             })
             .collect();
