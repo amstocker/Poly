@@ -554,7 +554,9 @@ mod tests {
     fn load() -> Engine {
         // Counter has interesting guards (`n >= 0`, `n > 0`) but we only need
         // the engine for its interner and schemas; Bindings are empty.
-        let src = std::fs::read_to_string("examples/counter.poly").expect("read counter");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../examples/counter.poly");
+        let src = std::fs::read_to_string(&path).expect("read counter");
         Engine::load(&src).expect("load counter")
     }
 

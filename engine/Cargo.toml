@@ -1,0 +1,10 @@
+[package]
+name = "poly-engine"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "poly_engine"
+
+[dependencies]
+chumsky = "0.9.3"

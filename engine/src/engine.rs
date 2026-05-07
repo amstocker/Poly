@@ -1,18 +1,10 @@
-pub mod eval;
-pub mod facts;
-pub mod fmt;
-pub mod interner;
-pub mod lower;
-pub mod parse;
-pub mod simplify;
-pub mod types;
-pub mod uquery;
-pub mod validate;
-
-pub use interner::{Interner, Sym};
-pub use types::*;
-
 use std::collections::BTreeMap;
+
+use crate::interner::Interner;
+use crate::lower;
+use crate::parse;
+use crate::types::{Decl, Defer, Interface, Schema};
+use crate::Sym;
 
 
 // ============================================================================

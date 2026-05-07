@@ -1,0 +1,11 @@
+[package]
+name = "poly"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "poly"
+path = "src/main.rs"
+
+[dependencies]
+poly-engine = { path = "../engine" }

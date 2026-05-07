@@ -395,7 +395,10 @@ mod tests {
     use std::collections::BTreeSet;
 
     fn load(path: &str) -> Engine {
-        let src = std::fs::read_to_string(path).expect("read example");
+        let full = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join(path);
+        let src = std::fs::read_to_string(&full).expect("read example");
         Engine::load(&src).expect("load engine")
     }
 
