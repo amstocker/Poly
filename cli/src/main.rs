@@ -175,7 +175,7 @@ fn run_explain(eng: &Engine, iface: &str, pos: &str) -> i32 {
         params: Slot::Anon,
         guard: Slot::Anon,
     }]);
-    let actions = eng.query(&actions_q, &env);
+    let actions: Vec<_> = eng.query(&actions_q, &env).collect();
 
     // Forward defers (this iface as defer source).
     let mut g = VarGen::new();
@@ -199,7 +199,7 @@ fn run_explain(eng: &Engine, iface: &str, pos: &str) -> i32 {
             target_args: Slot::Anon,
         },
     ]);
-    let forward = eng.query(&fwd_q, &env);
+    let forward: Vec<_> = eng.query(&fwd_q, &env).collect();
 
     // Backward defers (this iface as defer target).
     let mut g = VarGen::new();
@@ -223,7 +223,7 @@ fn run_explain(eng: &Engine, iface: &str, pos: &str) -> i32 {
             target_args: Slot::Anon,
         },
     ]);
-    let backward = eng.query(&bwd_q, &env);
+    let backward: Vec<_> = eng.query(&bwd_q, &env).collect();
 
     println!("{iface} at {pos}");
     print!("  available actions: {{");
@@ -300,7 +300,7 @@ fn run_locate(eng: &Engine, action: &str) -> i32 {
             guard: Slot::Anon,
         },
     ]);
-    let answers = eng.query(&q, &Bindings::default());
+    let answers: Vec<_> = eng.query(&q, &Bindings::default()).collect();
     if answers.is_empty() {
         println!("action `{action}` is not available at any position");
         return 1;

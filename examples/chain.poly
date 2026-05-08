@@ -1,0 +1,19 @@
+interface InterfaceA
+    StateA { ActionA }
+
+interface InterfaceB
+    StateB { ActionB }
+
+interface InterfaceC
+    StateC { ActionC }
+
+defer Defer1 : InterfaceA -> InterfaceB
+    StateA -> StateB {
+        ActionB -> ActionA
+    }
+
+defer Defer2 : InterfaceB -> InterfaceC
+    StateB -> StateC {
+        ActionC -> ActionB
+    }
+

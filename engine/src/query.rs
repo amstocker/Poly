@@ -228,43 +228,42 @@ fn unify_dir_ref_pat(
 // Per-goal matching against a fact relation
 // ============================================================================
 
-fn match_goal(goal: &Goal, eng: &Engine, ans: &Answer) -> Vec<Answer> {
+fn match_goal<'a>(
+    goal: &'a Goal,
+    eng: &'a Engine,
+    ans: Answer,
+) -> Box<dyn Iterator<Item = Answer> + 'a> {
     match goal {
-        Goal::Iface { iface, params } => eng
-            .iface_relation()
-            .filter_map(|i| {
+        Goal::Iface { iface, params } => Box::new(
+            eng.iface_relation().filter_map(move |i| {
                 let s = unify_term(iface, i.name, &ans.subst)?;
                 let s = unify_slot(params, Value::Params(i.params.clone()), &s)?;
                 Some(ans.with_subst(s))
-            })
-            .collect(),
-        Goal::IfaceInternal { internal, external } => eng
-            .iface_internal_relation()
-            .filter_map(|(int_sym, ext_sym)| {
+            }),
+        ),
+        Goal::IfaceInternal { internal, external } => Box::new(
+            eng.iface_internal_relation().filter_map(move |(int_sym, ext_sym)| {
                 let s = unify_term(internal, int_sym, &ans.subst)?;
                 let s = unify_term(external, ext_sym, &s)?;
                 Some(ans.with_subst(s))
-            })
-            .collect(),
-        Goal::SchemaRecord { schema, fields } => eng
-            .schema_record_relation()
-            .filter_map(|(name, flds)| {
+            }),
+        ),
+        Goal::SchemaRecord { schema, fields } => Box::new(
+            eng.schema_record_relation().filter_map(move |(name, flds)| {
                 let s = unify_term(schema, name, &ans.subst)?;
                 let s = unify_slot(fields, Value::Params(flds.to_vec()), &s)?;
                 Some(ans.with_subst(s))
-            })
-            .collect(),
-        Goal::SchemaSum { schema, variants } => eng
-            .schema_sum_relation()
-            .filter_map(|(name, vars)| {
+            }),
+        ),
+        Goal::SchemaSum { schema, variants } => Box::new(
+            eng.schema_sum_relation().filter_map(move |(name, vars)| {
                 let s = unify_term(schema, name, &ans.subst)?;
                 let s = unify_slot(variants, Value::Variants(vars.to_vec()), &s)?;
                 Some(ans.with_subst(s))
-            })
-            .collect(),
-        Goal::Position { iface, position, params, guard } => eng
-            .position_relation()
-            .filter_map(|(i_sym, p)| {
+            }),
+        ),
+        Goal::Position { iface, position, params, guard } => Box::new(
+            eng.position_relation().filter_map(move |(i_sym, p)| {
                 let s = unify_term(iface, i_sym, &ans.subst)?;
                 let s = unify_term(position, p.name, &s)?;
                 let s = unify_slot(params, Value::Params(p.params.clone()), &s)?;
@@ -274,11 +273,10 @@ fn match_goal(goal: &Goal, eng: &Engine, ans: &Answer) -> Vec<Answer> {
                     next.residual.push(g.clone());
                 }
                 Some(next)
-            })
-            .collect(),
-        Goal::Direction { iface, position, action, params, guard } => eng
-            .direction_relation()
-            .filter_map(|(i_sym, p_sym, d)| {
+            }),
+        ),
+        Goal::Direction { iface, position, action, params, guard } => Box::new(
+            eng.direction_relation().filter_map(move |(i_sym, p_sym, d)| {
                 let s = unify_term(iface, i_sym, &ans.subst)?;
                 let s = unify_term(position, p_sym, &s)?;
                 let s = unify_term(action, d.name, &s)?;
@@ -289,23 +287,21 @@ fn match_goal(goal: &Goal, eng: &Engine, ans: &Answer) -> Vec<Answer> {
                     next.residual.push(g.clone());
                 }
                 Some(next)
-            })
-            .collect(),
-        Goal::Defer { defer, source, target } => eng
-            .defer_relation()
-            .filter_map(|d| {
+            }),
+        ),
+        Goal::Defer { defer, source, target } => Box::new(
+            eng.defer_relation().filter_map(move |d| {
                 let s = unify_term(defer, d.name, &ans.subst)?;
                 let s = unify_term(source, d.source, &s)?;
                 let s = unify_term(target, d.target, &s)?;
                 Some(ans.with_subst(s))
-            })
-            .collect(),
+            }),
+        ),
         Goal::DeferEntry {
             defer, entry_idx, source_pos, src_pattern, src_guard,
             target_pos, target_args,
-        } => eng
-            .defer_entry_relation()
-            .filter_map(|(d_sym, idx, e)| {
+        } => Box::new(
+            eng.defer_entry_relation().filter_map(move |(d_sym, idx, e)| {
                 let s = unify_term(defer, d_sym, &ans.subst)?;
                 let s = unify_index_slot(entry_idx, idx, &s)?;
                 let s = unify_term(source_pos, e.source_pos, &s)?;
@@ -314,59 +310,135 @@ fn match_goal(goal: &Goal, eng: &Engine, ans: &Answer) -> Vec<Answer> {
                 let s = unify_term(target_pos, e.target_pos, &s)?;
                 let s = unify_slot(target_args, Value::Args(e.target_args.clone()), &s)?;
                 Some(ans.with_subst(s))
-            })
-            .collect(),
-        Goal::DeferDir { defer, entry_idx, target_dir, source_dir } => eng
-            .defer_dir_relation()
-            .filter_map(|(d_sym, idx, m)| {
+            }),
+        ),
+        Goal::DeferDir { defer, entry_idx, target_dir, source_dir } => Box::new(
+            eng.defer_dir_relation().filter_map(move |(d_sym, idx, m)| {
                 let s = unify_term(defer, d_sym, &ans.subst)?;
                 let s = unify_index_slot(entry_idx, idx, &s)?;
                 let s = unify_dir_ref_pat(target_dir, &m.target_dir, &s)?;
                 let s = unify_dir_ref_pat(source_dir, &m.source_dir, &s)?;
                 Some(ans.with_subst(s))
-            })
-            .collect(),
-        Goal::Where(expr) => vec![ans.push_residual(expr.clone())],
+            }),
+        ),
+        Goal::Where(expr) => Box::new(std::iter::once(ans.push_residual(expr.clone()))),
     }
 }
 
 
 // ============================================================================
-// Solver
+// Solver — explicit-stack, iteration-based
 // ============================================================================
 
-fn solve(goals: &[Goal], eng: &Engine, ans: Answer) -> Vec<Answer> {
-    let Some((first, rest)) = goals.split_first() else {
-        return vec![ans];
-    };
-    let mut out = Vec::new();
-    for next in match_goal(first, eng, &ans) {
-        out.extend(solve(rest, eng, next));
+/// One frame on the search stack: an in-flight goal whose `matches`
+/// iterator is producing answers, along with the goals to attempt
+/// after this one succeeds.
+struct Frame<'a> {
+    rest_goals: &'a [Goal],
+    matches: Box<dyn Iterator<Item = Answer> + 'a>,
+}
+
+/// Lazy stream of answers for a `Query`. Created by `Engine::query`.
+///
+/// The solver is depth-first with explicit backtracking: pull the next
+/// match from the top frame, push a child frame for the next goal, pop
+/// when a frame is exhausted. The simplifier runs per-answer as a
+/// `filter_map`-style step in `next()` — answers whose residual reduces
+/// to `false` are silently dropped.
+///
+/// Disjunctive bodies (`Query::or`) are processed sequentially: when
+/// the search stack drains for one body, the next body's first goal is
+/// pushed.
+pub struct Answers<'a> {
+    eng: &'a Engine,
+    env: &'a Bindings,
+    bodies: &'a [Vec<Goal>],
+    body_idx: usize,
+    stack: Vec<Frame<'a>>,
+}
+
+impl<'a> Iterator for Answers<'a> {
+    type Item = Answer;
+
+    fn next(&mut self) -> Option<Answer> {
+        loop {
+            // No active frames: advance to the next disjunct, or finish.
+            if self.stack.is_empty() {
+                if self.body_idx >= self.bodies.len() {
+                    return None;
+                }
+                let body = &self.bodies[self.body_idx];
+                self.body_idx += 1;
+                if let Some((first, rest)) = body.split_first() {
+                    let matches = match_goal(first, self.eng, Answer::empty());
+                    self.stack.push(Frame { rest_goals: rest, matches });
+                } else {
+                    // Vacuously-true body: yield the empty answer (modulo
+                    // the simplifier, which just sees an empty residual).
+                    if let Some(simplified) =
+                        simplify_answer(self.eng, &Answer::empty(), self.env)
+                    {
+                        return Some(simplified);
+                    }
+                }
+                continue;
+            }
+
+            // Try to advance the top frame.
+            let last = self.stack.len() - 1;
+            let next_match = self.stack[last].matches.next();
+            let rest_goals = self.stack[last].rest_goals;
+
+            match next_match {
+                None => {
+                    // Frame exhausted; backtrack.
+                    self.stack.pop();
+                }
+                Some(ans) => match rest_goals.split_first() {
+                    Some((next_goal, new_rest)) => {
+                        // More goals: push a frame for the next one.
+                        let matches = match_goal(next_goal, self.eng, ans);
+                        self.stack.push(Frame { rest_goals: new_rest, matches });
+                    }
+                    None => {
+                        // All goals matched: simplify and yield (or drop
+                        // if the residual reduces to `false`).
+                        if let Some(simplified) =
+                            simplify_answer(self.eng, &ans, self.env)
+                        {
+                            return Some(simplified);
+                        }
+                    }
+                },
+            }
+        }
     }
-    out
 }
 
 impl Engine {
-    /// Run `query` against the loaded program. Each disjunctive body is
-    /// solved by unification against the relations exposed in `relations.rs`;
-    /// per-position guards and `Goal::Where` expressions accumulate as
-    /// residuals on the resulting `Answer`s; the simplifier then reduces
-    /// each residual against `env`. An empty `env` (`Bindings::default()`)
-    /// is the common case — pass concrete variable bindings to specialize.
+    /// Run `query` against the loaded program. Returns a lazy iterator
+    /// of answers; the solver runs incrementally as the consumer pulls
+    /// items, and answer spaces with infinite valid completions can be
+    /// truncated with `.take(n)` or filtered.
+    ///
+    /// Each disjunctive body is solved by unification against the
+    /// relations exposed in `relations.rs`; per-position guards and
+    /// `Goal::Where` expressions accumulate as residuals on the
+    /// resulting `Answer`s; the simplifier then reduces each residual
+    /// against `env`. An empty `env` (`Bindings::default()`) is the
+    /// common case — pass concrete variable bindings to specialize.
     ///
     /// Answers whose residuals reduce to `false` are dropped. Answers
-    /// whose residuals reduce to `true` are returned with `residual:
+    /// whose residuals reduce to `true` are yielded with `residual:
     /// vec![]`. Anything else is kept as a single residual conjunct.
-    pub fn query(&self, query: &Query, env: &Bindings) -> Vec<Answer> {
-        let mut out = Vec::new();
-        for body in &query.bodies {
-            for ans in solve(body, self, Answer::empty()) {
-                if let Some(simplified) = simplify_answer(self, &ans, env) {
-                    out.push(simplified);
-                }
-            }
+    pub fn query<'a>(&'a self, query: &'a Query, env: &'a Bindings) -> Answers<'a> {
+        Answers {
+            eng: self,
+            env,
+            bodies: &query.bodies,
+            body_idx: 0,
+            stack: Vec::new(),
         }
-        out
     }
 }
 
@@ -435,8 +507,7 @@ mod tests {
             },
         ]);
         eng.query(&q, &Bindings::default())
-            .iter()
-            .map(|a| (answer_sym(a, i_var), answer_sym(a, p_var)))
+            .map(|a| (answer_sym(&a, i_var), answer_sym(&a, p_var)))
             .collect()
     }
 
@@ -553,7 +624,6 @@ mod tests {
 
         let q = Query::or(vec![realization, defer_source_abs]);
         eng.query(&q, &Bindings::default())
-            .into_iter()
             .map(|a| {
                 let tp = answer_sym(&a, tgt_pos);
                 let args = match a.subst.get(&tgt_args) {
@@ -605,8 +675,7 @@ mod tests {
             guard: Slot::Anon,
         }]);
         let actions: BTreeSet<Sym> = eng.query(&actions_q, &Bindings::default())
-            .iter()
-            .map(|a| answer_sym(a, action_v))
+            .map(|a| answer_sym(&a, action_v))
             .collect();
 
         let fd = g.fresh();
@@ -627,8 +696,7 @@ mod tests {
             },
         ]);
         let forward: BTreeSet<Sym> = eng.query(&fwd_q, &Bindings::default())
-            .iter()
-            .map(|a| answer_sym(a, fd))
+            .map(|a| answer_sym(&a, fd))
             .collect();
 
         let bd = g.fresh();
@@ -649,8 +717,7 @@ mod tests {
             },
         ]);
         let backward: BTreeSet<Sym> = eng.query(&bwd_q, &Bindings::default())
-            .iter()
-            .map(|a| answer_sym(a, bd))
+            .map(|a| answer_sym(&a, bd))
             .collect();
 
         (actions, forward, backward)
@@ -771,7 +838,7 @@ mod tests {
     fn decrement_residual_is_symbolic_with_empty_env() {
         let eng = load("examples/counter.poly");
         let q = decrement_query(&eng);
-        let answers = eng.query(&q, &Bindings::default());
+        let answers: Vec<_> = eng.query(&q, &Bindings::default()).collect();
         assert_eq!(answers.len(), 1);
         // Residual is `n > 0` — left symbolic because env is empty.
         let n = eng.interner.find("n").unwrap();
@@ -792,7 +859,7 @@ mod tests {
         let n = eng.interner.find("n").unwrap();
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(3));
-        let answers = eng.query(&q, &env);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
         assert_eq!(answers.len(), 1);
         assert!(answers[0].residual.is_empty(), "residual should be cleared");
     }
@@ -804,7 +871,7 @@ mod tests {
         let n = eng.interner.find("n").unwrap();
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(0));
-        let answers = eng.query(&q, &env);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
         assert!(answers.is_empty(), "residual `0 > 0` is false; answer should be dropped");
     }
 
@@ -820,7 +887,7 @@ mod tests {
             params: Slot::Anon,
             guard: Slot::Anon,
         }]);
-        let answers = eng.query(&q, &Bindings::default());
+        let answers: Vec<_> = eng.query(&q, &Bindings::default()).collect();
         assert_eq!(answers.len(), 1);
         // Residual is `n >= 0`.
         match &answers[0].residual[..] {
@@ -858,19 +925,19 @@ mod tests {
         // n=10: both `n > 0` and `n > 5` true → answer kept, residual cleared.
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(10));
-        let answers = eng.query(&q, &env);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
         assert_eq!(answers.len(), 1);
         assert!(answers[0].residual.is_empty());
 
         // n=3: `n > 0` true but `n > 5` false → answer dropped.
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(3));
-        let answers = eng.query(&q, &env);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
         assert!(answers.is_empty());
 
         // No env: the simplifier narrows `n > 0 ∧ n > 5` to the tighter
         // bound `n > 5` (Stage 4 interval narrowing).
-        let answers = eng.query(&q, &Bindings::default());
+        let answers: Vec<_> = eng.query(&q, &Bindings::default()).collect();
         assert_eq!(answers.len(), 1);
         match &answers[0].residual[..] {
             [Expr::BinOp(BinOp::Gt, l, r)] => {
