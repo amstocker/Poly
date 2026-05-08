@@ -23,17 +23,24 @@ formats. Future consumers (the planned service) do the same.
 
 Open with this shape:
 
-- **Parameterized queries (Stage A landed; Stage B open).**
-  `Goal::Position` now accepts `args: Vec<Expr<Sym>>` for concrete
-  arg values, substituted directly into the guard before the
-  simplifier runs. Tested against `grid.poly`: in-bounds /
-  out-of-bounds / symbolic args all behave correctly.
-  *Stage B (open)*: extending `Goal::Reach` (and a future
-  `Goal::Step`) to walk transitions whose target args depend on
-  the source's params — i.e., evolving `Coordinate(c.x, c.y)` to
-  `Coordinate(c.x - 1, c.y)` along a `Left` action. This is what
-  unlocks "find paths from Cell[a] to Cell[b] in Grid[W, H]" and
-  similar.
+- **Parameterized queries (Stages A + B landed; transitive case open).**
+  `Goal::Position` accepts `args: Vec<Expr<Sym>>` (Stage A); the new
+  `Goal::Step` does one-hop transitions along state-machine actions
+  (Stage B), substituting from_args through abstract direction refs
+  and emitting the destination's substituted guard onto the residual.
+  Tested against grid.poly (Right/Left at Cell, with edge case) and
+  counter.poly (Increment at Count[n]).
+  *Open (Stage C)*: transitive closure over Step edges with action-
+  history tracking. The simplest path: a `Goal::Path` that does BFS/
+  DFS over Step, yielding `(end_pos, end_args, [action seq])`. Or:
+  do path-finding outside the query as a free function on Engine,
+  and decide what subset becomes a query goal once we see the call
+  pattern.
+  *Bridging issue*: `Goal::Step` binds `to_args` via `Slot` (returns
+  `Value::Args`), but `from_args` is `Vec<Expr<Sym>>`. Chaining two
+  Steps in one query requires a way to read out `Value::Args` and
+  re-feed it as the next Step's `from_args`. Probably means a Term
+  variant that resolves to args, or a different chaining shape.
   *Symmetric extension*: `Goal::Direction` (and `Goal::Iface`) could
   take args by the same pattern, but no current example exercises
   parameterized directions, and iface-level params are already

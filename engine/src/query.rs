@@ -116,6 +116,28 @@ pub enum Goal {
         to_iface: Term,
         to_position: Term,
     },
+    /// One-hop transition along a state-machine action. Looks up the
+    /// realization defer for `iface` (the `Foo::Run` defer), finds the
+    /// entry whose `source_pos` matches `from_position`, finds the
+    /// direction mapping whose `target_dir` is `Named(action)`, and
+    /// pulls the abstract `source_dir`'s `tgt_args`. The query's
+    /// `from_args` are substituted through the abstract direction's
+    /// `src_pattern` to evaluate the destination args; the destination
+    /// position's guard (also substituted) lands on the residual.
+    ///
+    /// Yields the destination via `to_position` (unify with
+    /// `source_dir.tgt_pos`) and binds the computed args through
+    /// `to_args` as `Value::Args`. `iface`, `from_position`, and
+    /// `action` must all resolve to concrete `Sym`s in the current
+    /// substitution; otherwise the goal yields nothing.
+    Step {
+        iface: Term,
+        from_position: Term,
+        from_args: Vec<Expr<Sym>>,
+        action: Term,
+        to_position: Term,
+        to_args: Slot,
+    },
     /// A user-written constraint. The expression is added to the answer's
     /// residual; goals never short-circuit on residuals during search — the
     /// simplifier resolves them once at the end of the query.
@@ -398,6 +420,40 @@ fn match_goal<'a>(
                 Some(ans.with_subst(s))
             }))
         }
+        Goal::Step {
+            iface,
+            from_position,
+            from_args,
+            action,
+            to_position,
+            to_args,
+        } => {
+            let Some(iface_sym) = resolve_term(iface, &ans.subst) else {
+                return Box::new(std::iter::empty());
+            };
+            let Some(from_pos_sym) = resolve_term(from_position, &ans.subst) else {
+                return Box::new(std::iter::empty());
+            };
+            let Some(action_sym) = resolve_term(action, &ans.subst) else {
+                return Box::new(std::iter::empty());
+            };
+            let steps = collect_action_steps(
+                eng,
+                iface_sym,
+                from_pos_sym,
+                from_args,
+                action_sym,
+            );
+            Box::new(steps.into_iter().filter_map(move |step| {
+                let s = unify_term(to_position, step.tgt_pos, &ans.subst)?;
+                let s = unify_slot(to_args, Value::Args(step.tgt_args.clone()), &s)?;
+                let mut next = ans.with_subst(s);
+                if let Some(g) = step.guard {
+                    next.residual.push(g);
+                }
+                Some(next)
+            }))
+        }
         Goal::Where(expr) => Box::new(std::iter::once(ans.push_residual(expr.clone()))),
     }
 }
@@ -469,6 +525,127 @@ fn step(eng: &Engine, iface: Sym, pos: Sym, walk: Walk) -> Vec<(Sym, Sym)> {
         }
     }
     out
+}
+
+
+// ============================================================================
+// Action steps via the realization defer (Goal::Step)
+// ============================================================================
+
+/// Result of one action step: destination position name, computed args,
+/// and the destination's substituted guard (if any).
+struct ActionStep {
+    tgt_pos: Sym,
+    tgt_args: Vec<Expr<Sym>>,
+    guard: Option<Expr<Sym>>,
+}
+
+/// Find all action steps from `(iface, from_pos, from_args)` via
+/// `action`. Each step substitutes `from_args` through the matching
+/// abstract direction's `tgt_args` to compute the destination args,
+/// and substitutes through the destination position's guard.
+fn collect_action_steps(
+    eng: &Engine,
+    iface: Sym,
+    from_pos: Sym,
+    from_args: &[Expr<Sym>],
+    action: Sym,
+) -> Vec<ActionStep> {
+    let mut out = Vec::new();
+
+    // The realization defer for `iface` is the one paired with its
+    // `::Internal` carrier — find it via iface_internal_relation.
+    let Some(internal_sym) = eng
+        .iface_internal_relation()
+        .find(|(_, ext)| *ext == iface)
+        .map(|(int, _)| int)
+    else {
+        return out;
+    };
+    let Some(realization) = eng
+        .defer_relation()
+        .find(|d| d.source == internal_sym && d.target == iface)
+    else {
+        return out;
+    };
+
+    for entry in &realization.entries {
+        if entry.source_pos != from_pos {
+            continue;
+        }
+        for mapping in &entry.directions {
+            // We only care about realizations: target_dir is a Named
+            // direction (the external action), source_dir is the
+            // Abstract internal direction whose tgt_args we evaluate.
+            let DirRef::Named(named) = &mapping.target_dir else {
+                continue;
+            };
+            if *named != action {
+                continue;
+            }
+            let DirRef::Abstract { src_pattern, tgt_pos, tgt_args, .. } =
+                &mapping.source_dir
+            else {
+                continue;
+            };
+
+            // Build a substitution from src_pattern bindings to from_args.
+            // Wildcards skipped; arity must match.
+            let Some(src_sub) = bind_pattern(src_pattern, from_args) else {
+                continue;
+            };
+            let computed_to_args: Vec<Expr<Sym>> =
+                tgt_args.iter().map(|e| substitute(e, &src_sub)).collect();
+
+            // Look up the destination position in the external iface to
+            // pull its formal params + guard. (The external position
+            // `tgt_pos` is the same name as the internal one — the
+            // realization defer maps source positions to target positions
+            // with the same name and arity.)
+            let dst_guard =
+                eng.interfaces.get(&iface).and_then(|i| i.position(tgt_pos)).and_then(|p| {
+                    p.guard.as_ref().map(|g| {
+                        let dst_sub: BTreeMap<Sym, Expr<Sym>> = p
+                            .params
+                            .iter()
+                            .zip(computed_to_args.iter())
+                            .map(|(formal, arg)| (formal.name, arg.clone()))
+                            .collect();
+                        substitute(g, &dst_sub)
+                    })
+                });
+
+            out.push(ActionStep {
+                tgt_pos: *tgt_pos,
+                tgt_args: computed_to_args,
+                guard: dst_guard,
+            });
+        }
+    }
+
+    out
+}
+
+/// Build a substitution from a pattern + concrete args. `Pattern::Bind(name)`
+/// inserts `name -> arg`; `Pattern::Wildcard` is skipped. Returns `None`
+/// on arity mismatch.
+fn bind_pattern(
+    pattern: &[Pattern<Sym>],
+    args: &[Expr<Sym>],
+) -> Option<BTreeMap<Sym, Expr<Sym>>> {
+    if pattern.len() != args.len() {
+        return None;
+    }
+    let mut sub = BTreeMap::new();
+    for (pat, arg) in pattern.iter().zip(args.iter()) {
+        match pat {
+            Pattern::Bind(name) => {
+                sub.insert(*name, arg.clone());
+            }
+            Pattern::Wildcard => {}
+        }
+    }
+    Some(sub)
 }
 
 
@@ -1267,6 +1444,118 @@ mod tests {
             answers.is_empty(),
             "out-of-bounds Cell should be dropped, got {answers:?}",
         );
+    }
+
+    // ========================================================================
+    // Goal::Step — one-hop transitions
+    // ========================================================================
+
+    #[test]
+    fn step_right_in_grid_yields_neighbour() {
+        // Right at Cell[Coordinate(5, 5)] in Grid[10, 10] → Cell[Coordinate(6, 5)].
+        let eng = load("examples/grid.poly");
+        let grid = eng.interner.find("Grid").unwrap();
+        let cell = eng.interner.find("Cell").unwrap();
+        let right = eng.interner.find("Right").unwrap();
+
+        let mut g = VarGen::new();
+        let dst_pos = g.fresh();
+        let dst_args = g.fresh();
+        let q = Query::single(vec![Goal::Step {
+            iface: Term::Sym(grid),
+            from_position: Term::Sym(cell),
+            from_args: vec![coord_expr(&eng, 5, 5)],
+            action: Term::Sym(right),
+            to_position: Term::Var(dst_pos),
+            to_args: Slot::Var(dst_args),
+        }]);
+        let env = grid_env(&eng, 10, 10);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
+        assert_eq!(answers.len(), 1);
+        let ans = &answers[0];
+        assert_eq!(answer_sym(ans, dst_pos), cell);
+        match ans.subst.get(&dst_args) {
+            Some(Value::Args(args)) => {
+                assert_eq!(args.len(), 1);
+                // The substituted+folded coordinate should be Coordinate(6, 5).
+                let coord = eng.interner.find("Coordinate").unwrap();
+                let folded = super::super::eval::const_fold(&eng, &args[0], &env);
+                match &folded {
+                    Expr::Construct(name, parts) if *name == coord => {
+                        assert!(matches!(parts[0], Expr::LitInt(6)));
+                        assert!(matches!(parts[1], Expr::LitInt(5)));
+                    }
+                    other => panic!("expected Coordinate(6, 5), got {other:?}"),
+                }
+            }
+            other => panic!("expected Value::Args, got {other:?}"),
+        }
+        // In-bounds destination — guard reduces to true → empty residual.
+        assert!(ans.residual.is_empty(), "residual {:?}", ans.residual);
+    }
+
+    #[test]
+    fn step_left_at_left_edge_drops_via_guard() {
+        // Left at Cell[Coordinate(1, 5)] in Grid[10, 10]:
+        // computed destination Cell[Coordinate(0, 5)] fails the position
+        // guard `1 <= c.x`. Answer dropped.
+        let eng = load("examples/grid.poly");
+        let grid = eng.interner.find("Grid").unwrap();
+        let cell = eng.interner.find("Cell").unwrap();
+        let left = eng.interner.find("Left").unwrap();
+
+        let mut g = VarGen::new();
+        let dst_pos = g.fresh();
+        let dst_args = g.fresh();
+        let q = Query::single(vec![Goal::Step {
+            iface: Term::Sym(grid),
+            from_position: Term::Sym(cell),
+            from_args: vec![coord_expr(&eng, 1, 5)],
+            action: Term::Sym(left),
+            to_position: Term::Var(dst_pos),
+            to_args: Slot::Var(dst_args),
+        }]);
+        let env = grid_env(&eng, 10, 10);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
+        assert!(answers.is_empty(), "out-of-bounds destination should drop, got {answers:?}");
+    }
+
+    #[test]
+    fn step_increment_counter() {
+        // Increment at Count[3] → Count[4]. Counter::Run desugars
+        // Increment to abstract direction Count[n] => Count[n + 1].
+        let eng = load("examples/counter.poly");
+        let counter = eng.interner.find("Counter").unwrap();
+        let count = eng.interner.find("Count").unwrap();
+        let increment = eng.interner.find("Increment").unwrap();
+
+        let mut g = VarGen::new();
+        let dst_pos = g.fresh();
+        let dst_args = g.fresh();
+        let q = Query::single(vec![Goal::Step {
+            iface: Term::Sym(counter),
+            from_position: Term::Sym(count),
+            from_args: vec![Expr::LitInt(3)],
+            action: Term::Sym(increment),
+            to_position: Term::Var(dst_pos),
+            to_args: Slot::Var(dst_args),
+        }]);
+        let answers: Vec<_> = eng.query(&q, &Bindings::default()).collect();
+        assert_eq!(answers.len(), 1);
+        let ans = &answers[0];
+        assert_eq!(answer_sym(ans, dst_pos), count);
+        match ans.subst.get(&dst_args) {
+            Some(Value::Args(args)) => {
+                assert_eq!(args.len(), 1);
+                let folded = super::super::eval::const_fold(
+                    &eng,
+                    &args[0],
+                    &Bindings::default(),
+                );
+                assert!(matches!(folded, Expr::LitInt(4)));
+            }
+            other => panic!("expected Value::Args([4]), got {other:?}"),
+        }
     }
 
     #[test]

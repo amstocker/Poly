@@ -106,6 +106,19 @@ instances. Iface-level params (e.g. `Width` in `Grid[Width, Height]`)
 are bound via the `Bindings` env passed to `Engine::query`, not via
 goal args.
 
+`Goal::Step { iface, from_position, from_args, action, to_position,
+to_args }` is one transition along a state-machine action. Looks up
+the realization defer (`Foo::Run`), finds the entry whose
+`source_pos == from_position`, finds the direction mapping with
+`target_dir == Named(action)`, and pulls the abstract `source_dir`'s
+`tgt_args`. The query's `from_args` are substituted through the
+`src_pattern` to evaluate the destination args; the destination
+position's guard (also substituted) lands on the residual; `to_args`
+is bound as `Value::Args(computed)`. Concrete in-bounds steps reduce
+the guard to true; out-of-bounds destinations are dropped via guard
+contradiction. Composes with `Goal::Position`/`Goal::Where` for
+constraint-driven reasoning.
+
 `Goal::Reach { walk, from_iface, from_position, to_iface, to_position }`
 walks defer edges transitively from a concrete starting `(iface, pos)`.
 Forward follows `(defer.source, entry.source_pos) → (defer.target,
