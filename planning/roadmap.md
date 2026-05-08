@@ -4,30 +4,30 @@ Open work, with status. Closed items live in the session logs under `log/`.
 
 ## Active
 
-### Embedding API — grow the named ops
+### One Engine, one query method
 
-`Engine` exposes typed Rust ops (`load`, `explain_position`,
-`locate_action`) on top of `uquery::Query`. Result types
-(`ExplainResult`, `DeferLink`, `ActionLocation`, `ApiError`) live in the
-`api` module. The future service is expected to import this crate and
-call these directly.
+The public surface is intentionally minimal: `Engine::load` to load a
+program, `Engine::query(query, env) -> Vec<Answer>` to ask anything
+about it. Caller composes a `Query` from `Goal`s; engine returns
+answers with simplified residuals. Anything more domain-specific
+(typed `ExplainResult` structs, JSON wire format, …) is built *on top*
+by the consumer, not in the engine.
 
-Next ops to add as motivating examples appear:
+The CLI itself is the proving ground: `--explain` and `--locate`
+construct `Query` values inline and project the answers into their
+display formats. Future consumers (the planned service) do the same.
 
-- `enabled_actions(iface, position) -> Vec<EnabledAction>` — actions
-  filtered by guard satisfaction at a concrete position; residual `false`
-  drops, residual `true` clears.
-- `next_position(iface, position, action) -> Option<PositionRef>` — Q2
-  via the `::Internal` realization defer. Today reachable as a special
-  case of `explain_position`; promote to its own op once the call site
-  exists.
-- `validate_position(iface, position) -> Validation` — guard check on a
-  proposed concrete state; needed for transactional state-set in the
-  future service.
+Open with this shape:
 
-Each op needs an answer to: how does a parameterized position arrive on
-the wire? Today the API takes bare `&str` names; for parameterized ops
-we'll need a typed `PositionRef { name, args }`.
+- **Parameterized inputs.** Today queries take `Term::Sym(s)` for
+  bound names. To bind into parameterized positions (e.g. `Count[5]`)
+  with the param flowing into the answer's residual, we'll want a
+  pattern-shaped `Term` variant or a dedicated `Goal::PositionRef`.
+  Decide when a real call site forces it.
+- **Convenience constructors.** `Query::single`/`Query::or` is the
+  whole API surface today. If common query shapes recur in CLI/tests,
+  add small builder helpers (`Query::all_directions_at(iface, pos)`)
+  rather than adding more `Goal` variants.
 
 ### Query surface syntax (text or JSON)
 

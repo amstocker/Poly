@@ -120,7 +120,7 @@ pub struct Answer {
     pub subst: Subst,
     /// Conjuncts left over after matching: position guards, direction guards,
     /// and `Goal::Where` expressions. Resolved against the caller's env by the
-    /// simplifier before `run_query` returns. An empty residual means the
+    /// simplifier before `Engine::query` returns. An empty residual means the
     /// answer is unconditionally true.
     pub residual: Vec<Expr<Sym>>,
 }
@@ -346,16 +346,28 @@ fn solve(goals: &[Goal], eng: &Engine, ans: Answer) -> Vec<Answer> {
     out
 }
 
-pub fn run_query(eng: &Engine, query: &Query, env: &Bindings) -> Vec<Answer> {
-    let mut out = Vec::new();
-    for body in &query.bodies {
-        for ans in solve(body, eng, Answer::empty()) {
-            if let Some(simplified) = simplify_answer(eng, &ans, env) {
-                out.push(simplified);
+impl Engine {
+    /// Run `query` against the loaded program. Each disjunctive body is
+    /// solved by unification against the relations exposed in `relations.rs`;
+    /// per-position guards and `Goal::Where` expressions accumulate as
+    /// residuals on the resulting `Answer`s; the simplifier then reduces
+    /// each residual against `env`. An empty `env` (`Bindings::default()`)
+    /// is the common case — pass concrete variable bindings to specialize.
+    ///
+    /// Answers whose residuals reduce to `false` are dropped. Answers
+    /// whose residuals reduce to `true` are returned with `residual:
+    /// vec![]`. Anything else is kept as a single residual conjunct.
+    pub fn query(&self, query: &Query, env: &Bindings) -> Vec<Answer> {
+        let mut out = Vec::new();
+        for body in &query.bodies {
+            for ans in solve(body, self, Answer::empty()) {
+                if let Some(simplified) = simplify_answer(self, &ans, env) {
+                    out.push(simplified);
+                }
             }
         }
+        out
     }
-    out
 }
 
 /// Conjoin and simplify an answer's residual against `env`. Returns `None`
@@ -422,7 +434,7 @@ mod tests {
                 guard: Slot::Anon,
             },
         ]);
-        run_query(eng, &q, &Bindings::default())
+        eng.query(&q, &Bindings::default())
             .iter()
             .map(|a| (answer_sym(a, i_var), answer_sym(a, p_var)))
             .collect()
@@ -540,7 +552,7 @@ mod tests {
         ];
 
         let q = Query::or(vec![realization, defer_source_abs]);
-        run_query(eng, &q, &Bindings::default())
+        eng.query(&q, &Bindings::default())
             .into_iter()
             .map(|a| {
                 let tp = answer_sym(&a, tgt_pos);
@@ -592,7 +604,7 @@ mod tests {
             params: Slot::Anon,
             guard: Slot::Anon,
         }]);
-        let actions: BTreeSet<Sym> = run_query(eng, &actions_q, &Bindings::default())
+        let actions: BTreeSet<Sym> = eng.query(&actions_q, &Bindings::default())
             .iter()
             .map(|a| answer_sym(a, action_v))
             .collect();
@@ -614,7 +626,7 @@ mod tests {
                 target_args: Slot::Anon,
             },
         ]);
-        let forward: BTreeSet<Sym> = run_query(eng, &fwd_q, &Bindings::default())
+        let forward: BTreeSet<Sym> = eng.query(&fwd_q, &Bindings::default())
             .iter()
             .map(|a| answer_sym(a, fd))
             .collect();
@@ -636,7 +648,7 @@ mod tests {
                 target_args: Slot::Anon,
             },
         ]);
-        let backward: BTreeSet<Sym> = run_query(eng, &bwd_q, &Bindings::default())
+        let backward: BTreeSet<Sym> = eng.query(&bwd_q, &Bindings::default())
             .iter()
             .map(|a| answer_sym(a, bd))
             .collect();
@@ -759,7 +771,7 @@ mod tests {
     fn decrement_residual_is_symbolic_with_empty_env() {
         let eng = load("examples/counter.poly");
         let q = decrement_query(&eng);
-        let answers = run_query(&eng, &q, &Bindings::default());
+        let answers = eng.query(&q, &Bindings::default());
         assert_eq!(answers.len(), 1);
         // Residual is `n > 0` — left symbolic because env is empty.
         let n = eng.interner.find("n").unwrap();
@@ -780,7 +792,7 @@ mod tests {
         let n = eng.interner.find("n").unwrap();
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(3));
-        let answers = run_query(&eng, &q, &env);
+        let answers = eng.query(&q, &env);
         assert_eq!(answers.len(), 1);
         assert!(answers[0].residual.is_empty(), "residual should be cleared");
     }
@@ -792,7 +804,7 @@ mod tests {
         let n = eng.interner.find("n").unwrap();
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(0));
-        let answers = run_query(&eng, &q, &env);
+        let answers = eng.query(&q, &env);
         assert!(answers.is_empty(), "residual `0 > 0` is false; answer should be dropped");
     }
 
@@ -808,7 +820,7 @@ mod tests {
             params: Slot::Anon,
             guard: Slot::Anon,
         }]);
-        let answers = run_query(&eng, &q, &Bindings::default());
+        let answers = eng.query(&q, &Bindings::default());
         assert_eq!(answers.len(), 1);
         // Residual is `n >= 0`.
         match &answers[0].residual[..] {
@@ -846,19 +858,19 @@ mod tests {
         // n=10: both `n > 0` and `n > 5` true → answer kept, residual cleared.
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(10));
-        let answers = run_query(&eng, &q, &env);
+        let answers = eng.query(&q, &env);
         assert_eq!(answers.len(), 1);
         assert!(answers[0].residual.is_empty());
 
         // n=3: `n > 0` true but `n > 5` false → answer dropped.
         let mut env = Bindings::default();
         env.insert(n, super::super::eval::Value::Int(3));
-        let answers = run_query(&eng, &q, &env);
+        let answers = eng.query(&q, &env);
         assert!(answers.is_empty());
 
         // No env: the simplifier narrows `n > 0 ∧ n > 5` to the tighter
         // bound `n > 5` (Stage 4 interval narrowing).
-        let answers = run_query(&eng, &q, &Bindings::default());
+        let answers = eng.query(&q, &Bindings::default());
         assert_eq!(answers.len(), 1);
         match &answers[0].residual[..] {
             [Expr::BinOp(BinOp::Gt, l, r)] => {

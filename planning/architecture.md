@@ -81,8 +81,8 @@ parameter space may be infinite).
 
 ## Query layer
 
-`uquery::Query` is a vector of disjunctive bodies, each a sequence of
-`Goal`s. Goals match against the fact relations above; logic variables
+`query::Query` is a vector of disjunctive bodies, each a sequence of
+`Goal`s. Goals match against the relations above; logic variables
 (`VarId`) bind values during unification. Three kinds of binding slots:
 
 - `Term` — symbol-valued slot (`Term::Sym(s)`, `Term::Var(v)`, `Term::Anon`).
@@ -97,9 +97,9 @@ An `Answer` is a `Subst` (var → value) plus a `residual: Vec<Expr<Sym>>`.
 Empty residual means the answer is unconditionally true; otherwise the
 residual is a conjunction of constraints under which the answer holds.
 
-`run_query(eng, facts, query, env)` solves each disjunct against the fact
-base, accumulates residuals, runs the simplifier on the conjoined residual,
-and returns the surviving answers:
+`Engine::query(query, env)` solves each disjunct against the loaded
+program, accumulates residuals, runs the simplifier on the conjoined
+residual, and returns the surviving answers:
 
 - residual reduces to `true` → cleared on the answer.
 - residual reduces to `false` → answer dropped.
@@ -142,31 +142,31 @@ poly query <file> --explain <iface> <pos>         # actions + forward + backward
 poly query <file> --locate <action>               # iface.position list with residuals
 ```
 
-The CLI is a thin renderer over the named ops on `Engine` (see below);
-each flag dispatches to one method.
+The CLI builds `Query` values inline and calls `Engine::query`; it
+formats the resulting answers itself.
 
 ## Embedding API
 
-`Engine` is the public surface for service consumers — it's the loaded
-program *and* the query handle:
+The public surface is intentionally minimal — one type, one method.
 
 - `Engine::load(src) -> Result<Self, EngineError>` — parse + lower +
   validate, in one call.
-- `Engine::explain_position(iface, position) -> Result<ExplainResult, ApiError>`
-  — actions + forward/backward defer links.
-- `Engine::locate_action(action) -> Vec<ActionLocation>` — every `(iface,
-  position)` where the action is enabled, with residual.
-- `Engine::resolve(sym) -> &str` — Sym → name lookup.
+- `Engine::query(query, env) -> Vec<Answer>` — the single way to ask
+  the engine anything. Caller composes a `Query` from `Goal`s; engine
+  unifies against the relations and returns answers with residuals.
+- `Engine::resolve(sym) -> &str` — `Sym` → name lookup.
+- `Engine::*_relation()` — iterator views of the loaded program; useful
+  for renderers and direct AST walks.
 
-Result types (`ExplainResult`, `DeferLink`, `ActionLocation`, `ApiError`)
-live in `api` and are typed Rust structs with `Sym` and `Expr<Sym>`
-payloads. JSON serialization is intentionally not added yet; it will be
-a thin layer once the future service needs it.
+Whatever shape the caller wants for results — typed `ExplainResult`-style
+structs, JSON for a wire protocol, etc. — they build it on top of
+`Vec<Answer>` themselves. The engine does not bake a "named operation"
+vocabulary into its surface; consumers compose queries and project
+answers as suits them.
 
-Queries against the program also walk `Engine` directly via
-`*_relation()` iterator methods (one per logical relation in the fact
-base — see `relations.rs`). These are `pub` so consumers can iterate
-the loaded program, but most service callers stay at the named-op level.
+`Bindings` (re-exported at the crate root) is the env passed to `query`:
+a `BTreeMap<Sym, Value>` of pre-bound logic variables. The common case
+is `Bindings::default()`; supply concrete bindings to specialize.
 
 ## Layout
 
@@ -176,12 +176,13 @@ The repo is a Cargo workspace with two crates:
   language/runtime work.
 - `cli/` — `poly`, the binary. Renders results; no engine logic.
 
-Inside `engine/src/`, public modules are `api` and `types`; everything
+Inside `engine/src/`, public modules are `query` and `types`; everything
 else is `pub(crate)`. Top-level re-exports: `Engine`, `EngineError`,
-`Sym`, `Interner`.
+`Sym`, `Interner`, `Bindings`.
 
-- `api.rs` — named ops on `Engine` (`explain_position`, `locate_action`)
-  + result types; the embedding surface.
+- `query.rs` — the `Query` AST (`Goal`, `Term`, `Slot`, `IndexSlot`,
+  `DirRefPat`), unifier, solver, and `Engine::query` impl. The query
+  layer.
 - `types.rs` — `Schema`, `Interface`, `Position`, `Direction`, `Defer`,
   `DeferEntry`, `Pattern`, `DirRef`, `DirMapping`, `Expr`, `Param`,
   `Type`, `Decl`. No transition field on `Direction`.
@@ -196,9 +197,7 @@ else is `pub(crate)`. Top-level re-exports: `Engine`, `EngineError`,
   rendering.
 - `eval.rs` — `Value`, `Bindings`, `const_fold`, `conjoin`.
 - `relations.rs` — `*_relation()` iterators on `Engine`; the queryable
-  view of the loaded program (replaces the old `Facts` projection).
-- `uquery.rs` — query AST + unifier + solver + integration with the
-  simplifier. Tests reduce Q1/Q2/Q3 queries against this.
+  view of the loaded program.
 - `simplify.rs` — residual reasoner.
 - `engine.rs` — `Engine` struct, `EngineError`, `Engine::load`.
 
