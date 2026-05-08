@@ -1,4 +1,4 @@
-use poly_engine::api::{ActionLocation, ApiError, DeferLink, ExplainResult, Poly};
+use poly_engine::api::{ActionLocation, ApiError, DeferLink, ExplainResult};
 use poly_engine::{Engine, EngineError};
 
 fn main() {
@@ -54,7 +54,7 @@ fn print_usage() {
     );
 }
 
-fn load(path: &str) -> Option<Poly> {
+fn load(path: &str) -> Option<Engine> {
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
@@ -62,8 +62,8 @@ fn load(path: &str) -> Option<Poly> {
             return None;
         }
     };
-    match Poly::from_source(&src) {
-        Ok(p) => Some(p),
+    match Engine::load(&src) {
+        Ok(e) => Some(e),
         Err(EngineError::Parse(errs)) => {
             for e in errs {
                 eprintln!("parse error in {path}: {e:?}");
@@ -87,8 +87,7 @@ fn cmd_show(args: &[String]) -> i32 {
             return 1;
         }
     };
-    let Some(poly) = load(path) else { return 1 };
-    let eng = poly.engine();
+    let Some(eng) = load(path) else { return 1 };
     for s in eng.schemas.values() {
         println!("{}", eng.fmt_schema(s));
     }
@@ -109,8 +108,8 @@ fn cmd_facts(args: &[String]) -> i32 {
             return 1;
         }
     };
-    let Some(poly) = load(path) else { return 1 };
-    print!("{}", poly.engine().fmt_facts());
+    let Some(eng) = load(path) else { return 1 };
+    print!("{}", eng.fmt_facts());
     0
 }
 
@@ -123,17 +122,17 @@ fn cmd_query(args: &[String]) -> i32 {
             return 1;
         }
     };
-    let Some(poly) = load(path) else { return 1 };
+    let Some(eng) = load(path) else { return 1 };
     match rest.split_first() {
         Some((flag, tail)) if flag == "--explain" => match tail {
-            [iface, pos] => run_explain(&poly, iface, pos),
+            [iface, pos] => run_explain(&eng, iface, pos),
             _ => {
                 eprintln!("usage: poly query <file> --explain <interface> <position>");
                 1
             }
         },
         Some((flag, tail)) if flag == "--locate" => match tail {
-            [action] => run_locate(&poly, action),
+            [action] => run_locate(&eng, action),
             _ => {
                 eprintln!("usage: poly query <file> --locate <action>");
                 1
@@ -147,8 +146,8 @@ fn cmd_query(args: &[String]) -> i32 {
     }
 }
 
-fn run_explain(poly: &Poly, iface: &str, pos: &str) -> i32 {
-    let result = match poly.explain_position(iface, pos) {
+fn run_explain(eng: &Engine, iface: &str, pos: &str) -> i32 {
+    let result = match eng.explain_position(iface, pos) {
         Ok(r) => r,
         Err(ApiError::UnknownInterface(name)) => {
             eprintln!("unknown interface: {name}");
@@ -159,17 +158,17 @@ fn run_explain(poly: &Poly, iface: &str, pos: &str) -> i32 {
             return 1;
         }
     };
-    print_explain(poly, &result, iface, pos);
+    print_explain(eng, &result, iface, pos);
     0
 }
 
-fn print_explain(poly: &Poly, r: &ExplainResult, iface_label: &str, pos_label: &str) {
+fn print_explain(eng: &Engine, r: &ExplainResult, iface_label: &str, pos_label: &str) {
     println!("{iface_label} at {pos_label}");
 
     print!("  available actions: {{");
     for (i, a) in r.actions.iter().enumerate() {
         if i > 0 { print!(", "); }
-        print!("{}", poly.resolve(*a));
+        print!("{}", eng.resolve(*a));
     }
     println!("}}");
 
@@ -177,7 +176,7 @@ fn print_explain(poly: &Poly, r: &ExplainResult, iface_label: &str, pos_label: &
         println!();
         println!("  forward defers:");
         for link in &r.forward {
-            print_defer_link(poly, link);
+            print_defer_link(eng, link);
         }
     }
 
@@ -185,41 +184,41 @@ fn print_explain(poly: &Poly, r: &ExplainResult, iface_label: &str, pos_label: &
         println!();
         println!("  backward defers:");
         for link in &r.backward {
-            print_defer_link(poly, link);
+            print_defer_link(eng, link);
         }
     }
 }
 
-fn print_defer_link(poly: &Poly, link: &DeferLink) {
+fn print_defer_link(eng: &Engine, link: &DeferLink) {
     println!(
         "    {} : {} -> {} ({}.{} -> {}.{})",
-        poly.resolve(link.defer),
-        poly.resolve(link.source_iface),
-        poly.resolve(link.target_iface),
-        poly.resolve(link.source_iface),
-        poly.resolve(link.source_pos),
-        poly.resolve(link.target_iface),
-        poly.resolve(link.target_pos),
+        eng.resolve(link.defer),
+        eng.resolve(link.source_iface),
+        eng.resolve(link.target_iface),
+        eng.resolve(link.source_iface),
+        eng.resolve(link.source_pos),
+        eng.resolve(link.target_iface),
+        eng.resolve(link.target_pos),
     );
-    print_residual(poly.engine(), &link.residual, "      ");
+    print_residual(eng, &link.residual, "      ");
 }
 
-fn run_locate(poly: &Poly, action: &str) -> i32 {
-    let answers = poly.locate_action(action);
+fn run_locate(eng: &Engine, action: &str) -> i32 {
+    let answers = eng.locate_action(action);
     if answers.is_empty() {
         println!("action `{action}` is not available at any position");
         return 1;
     }
     println!("action `{action}` is available at:");
     for ans in &answers {
-        print_action_location(poly, ans);
+        print_action_location(eng, ans);
     }
     0
 }
 
-fn print_action_location(poly: &Poly, loc: &ActionLocation) {
-    print!("  {}.{}", poly.resolve(loc.iface), poly.resolve(loc.position));
-    print_residual_inline(poly.engine(), &loc.residual);
+fn print_action_location(eng: &Engine, loc: &ActionLocation) {
+    print!("  {}.{}", eng.resolve(loc.iface), eng.resolve(loc.position));
+    print_residual_inline(eng, &loc.residual);
     println!();
 }
 

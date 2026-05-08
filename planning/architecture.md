@@ -56,8 +56,10 @@ sugar rewriting.
 
 ## Fact base
 
-`Engine::facts()` projects the loaded program into typed relation tuples
-(see `src/engine/facts.rs` for the exact shapes). The relations are:
+The loaded program is queryable as a set of flat relations exposed by
+`*_relation()` iterator methods on `Engine` (see `engine/src/relations.rs`).
+There is no separate projection step — the iterators flat-map over the
+nested AST on demand. Relations:
 
 - `schema_record(S, fields)`, `schema_sum(S, variants)`
 - `iface(I, params)`
@@ -70,12 +72,12 @@ sugar rewriting.
 - `defer_dir(D, entry_idx, target_dir, source_dir)` where each `dir` is
   either `Named(Sym)` or `Abstract { src_pos, src_pattern, tgt_pos, tgt_args }`
 
-Guards and arg expressions live inside their relation tuples; they aren't
-factored into separate fact rows. Abstract direction refs are first-class
-in `defer_dir` (no expansion into a transition table — the parameter space
-may be infinite).
+Guards and arg expressions live inside the AST nodes themselves; they
+aren't factored into separate fact rows. Abstract direction refs are
+first-class in `defer_dir` (no expansion into a transition table — the
+parameter space may be infinite).
 
-`poly facts <file>` prints the projection in Datalog notation for inspection.
+`poly facts <file>` prints the relations in Datalog notation for inspection.
 
 ## Query layer
 
@@ -140,25 +142,31 @@ poly query <file> --explain <iface> <pos>         # actions + forward + backward
 poly query <file> --locate <action>               # iface.position list with residuals
 ```
 
-The CLI is a thin renderer over `poly_engine::api::Poly` (see below); each
-flag dispatches to one named op.
+The CLI is a thin renderer over the named ops on `Engine` (see below);
+each flag dispatches to one method.
 
 ## Embedding API
 
-`poly_engine::api::Poly` is the public surface for service consumers:
+`Engine` is the public surface for service consumers — it's the loaded
+program *and* the query handle:
 
-- `Poly::from_source(src) -> Result<Self, EngineError>` — parse + lower +
-  validate + project, in one call.
-- `Poly::explain_position(iface, position) -> Result<ExplainResult, ApiError>`
+- `Engine::load(src) -> Result<Self, EngineError>` — parse + lower +
+  validate, in one call.
+- `Engine::explain_position(iface, position) -> Result<ExplainResult, ApiError>`
   — actions + forward/backward defer links.
-- `Poly::locate_action(action) -> Vec<ActionLocation>` — every `(iface,
+- `Engine::locate_action(action) -> Vec<ActionLocation>` — every `(iface,
   position)` where the action is enabled, with residual.
-- `Poly::engine() / facts() / resolve()` — escape hatches for renderers.
+- `Engine::resolve(sym) -> &str` — Sym → name lookup.
 
-Result types (`ExplainResult`, `DeferLink`, `ActionLocation`) are typed
-Rust structs with `Sym` and `Expr<Sym>` payloads. JSON serialization is
-intentionally not added yet; it will be a thin layer once the future
-service needs it.
+Result types (`ExplainResult`, `DeferLink`, `ActionLocation`, `ApiError`)
+live in `api` and are typed Rust structs with `Sym` and `Expr<Sym>`
+payloads. JSON serialization is intentionally not added yet; it will be
+a thin layer once the future service needs it.
+
+Queries against the program also walk `Engine` directly via
+`*_relation()` iterator methods (one per logical relation in the fact
+base — see `relations.rs`). These are `pub` so consumers can iterate
+the loaded program, but most service callers stay at the named-op level.
 
 ## Layout
 
@@ -170,9 +178,10 @@ The repo is a Cargo workspace with two crates:
 
 Inside `engine/src/`, public modules are `api` and `types`; everything
 else is `pub(crate)`. Top-level re-exports: `Engine`, `EngineError`,
-`Sym`, `Interner`, `Facts`.
+`Sym`, `Interner`.
 
-- `api.rs` — `Poly` handle and named ops; the embedding surface.
+- `api.rs` — named ops on `Engine` (`explain_position`, `locate_action`)
+  + result types; the embedding surface.
 - `types.rs` — `Schema`, `Interface`, `Position`, `Direction`, `Defer`,
   `DeferEntry`, `Pattern`, `DirRef`, `DirMapping`, `Expr`, `Param`,
   `Type`, `Decl`. No transition field on `Direction`.
@@ -183,13 +192,15 @@ else is `pub(crate)`. Top-level re-exports: `Engine`, `EngineError`,
 - `lower.rs` — `Decl<String>` → `Decl<Sym>`.
 - `validate.rs` — defer validation (positions exist, arities match,
   abstract refs only on `::Internal` source).
-- `fmt.rs` — Display impls; round-trip with source.
+- `fmt.rs` — Display impls; round-trip with source; `fmt_facts` Datalog
+  rendering.
 - `eval.rs` — `Value`, `Bindings`, `const_fold`, `conjoin`.
-- `facts.rs` — relation tuples + projection + Datalog rendering.
+- `relations.rs` — `*_relation()` iterators on `Engine`; the queryable
+  view of the loaded program (replaces the old `Facts` projection).
 - `uquery.rs` — query AST + unifier + solver + integration with the
   simplifier. Tests reduce Q1/Q2/Q3 queries against this.
 - `simplify.rs` — residual reasoner.
-- `engine.rs` — `Engine`, `EngineError`, `Engine::load`.
+- `engine.rs` — `Engine` struct, `EngineError`, `Engine::load`.
 
 ## Working hypothesis
 

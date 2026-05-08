@@ -6,9 +6,11 @@ Open work, with status. Closed items live in the session logs under `log/`.
 
 ### Embedding API — grow the named ops
 
-`poly_engine::api::Poly` exposes typed Rust ops (`from_source`,
-`explain_position`, `locate_action`) on top of `uquery::Query`. The
-future service is expected to import this crate and call these directly.
+`Engine` exposes typed Rust ops (`load`, `explain_position`,
+`locate_action`) on top of `uquery::Query`. Result types
+(`ExplainResult`, `DeferLink`, `ActionLocation`, `ApiError`) live in the
+`api` module. The future service is expected to import this crate and
+call these directly.
 
 Next ops to add as motivating examples appear:
 

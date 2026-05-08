@@ -1,12 +1,11 @@
 // Embedding-friendly API surface.
 //
-// `Poly` wraps a loaded `Engine` and exposes named operations on top of it.
-// Each method maps to a `uquery::Query` internally — callers don't see
-// logic-variable plumbing.
+// These methods live on `Engine` itself — `Engine` *is* the embedding
+// handle. Each method maps to a `uquery::Query` internally; callers
+// never see logic-variable plumbing.
 //
-// This is the surface a Rust service consumer depends on. Lower-level
-// modules (`uquery`, `eval`, `simplify`, …) are `pub(crate)` and not
-// reachable from outside the crate.
+// Lower-level modules (`uquery`, `eval`, `simplify`, …) are `pub(crate)`
+// and not reachable from outside the crate.
 
 use std::collections::BTreeSet;
 
@@ -15,27 +14,7 @@ use crate::types::Expr;
 use crate::uquery::{
     run_query, Answer, Goal, IndexSlot, Query, Slot, Term, Value, VarGen, VarId,
 };
-use crate::{Engine, EngineError, Sym};
-
-
-// =============================================================================
-// Top-level handle
-// =============================================================================
-
-/// A loaded Poly program, ready to query.
-pub struct Poly {
-    engine: Engine,
-}
-
-impl Poly {
-    /// Parse, lower, and validate `src` into a queryable handle.
-    pub fn from_source(src: &str) -> Result<Self, EngineError> {
-        Ok(Self { engine: Engine::load(src)? })
-    }
-
-    pub fn engine(&self) -> &Engine { &self.engine }
-    pub fn resolve(&self, sym: Sym) -> &str { self.engine.resolve(sym) }
-}
+use crate::{Engine, Sym};
 
 
 // =============================================================================
@@ -103,16 +82,16 @@ pub struct ActionLocation {
 // Operations
 // =============================================================================
 
-impl Poly {
+impl Engine {
     /// `--explain <iface> <position>`: actions available at that position
     /// plus every defer link that touches it.
     pub fn explain_position(&self, iface: &str, position: &str)
         -> Result<ExplainResult, ApiError>
     {
-        let i_sym = self.engine.interner.find(iface)
-            .filter(|s| self.engine.interfaces.contains_key(s))
+        let i_sym = self.interner.find(iface)
+            .filter(|s| self.interfaces.contains_key(s))
             .ok_or_else(|| ApiError::UnknownInterface(iface.to_string()))?;
-        let p_sym = self.engine.interner.find(position)
+        let p_sym = self.interner.find(position)
             .ok_or_else(|| ApiError::UnknownPosition {
                 iface: iface.to_string(),
                 position: position.to_string(),
@@ -130,7 +109,7 @@ impl Poly {
             params: Slot::Anon,
             guard: Slot::Anon,
         }]);
-        let action_answers = run_query(&self.engine, &actions_q, &env);
+        let action_answers = run_query(self, &actions_q, &env);
         let mut seen: BTreeSet<Sym> = BTreeSet::new();
         let mut actions: Vec<Sym> = Vec::new();
         for a in &action_answers {
@@ -163,7 +142,7 @@ impl Poly {
                 target_args: Slot::Anon,
             },
         ]);
-        let forward: Vec<DeferLink> = run_query(&self.engine, &fwd_q, &env)
+        let forward: Vec<DeferLink> = run_query(self, &fwd_q, &env)
             .into_iter()
             .map(|ans| DeferLink {
                 defer: sym_of(&ans, fd),
@@ -197,7 +176,7 @@ impl Poly {
                 target_args: Slot::Anon,
             },
         ]);
-        let backward: Vec<DeferLink> = run_query(&self.engine, &bwd_q, &env)
+        let backward: Vec<DeferLink> = run_query(self, &bwd_q, &env)
             .into_iter()
             .map(|ans| DeferLink {
                 defer: sym_of(&ans, bd),
@@ -222,7 +201,7 @@ impl Poly {
     /// enabled, with any residual constraint. Empty Vec means "no matches"
     /// (including the case where the action name was never seen).
     pub fn locate_action(&self, action: &str) -> Vec<ActionLocation> {
-        let Some(a_sym) = self.engine.interner.find(action) else {
+        let Some(a_sym) = self.interner.find(action) else {
             return Vec::new();
         };
         let mut g = VarGen::new();
@@ -243,7 +222,7 @@ impl Poly {
                 guard: Slot::Anon,
             },
         ]);
-        run_query(&self.engine, &q, &Bindings::default())
+        run_query(self, &q, &Bindings::default())
             .into_iter()
             .map(|ans| ActionLocation {
                 iface: sym_of(&ans, i_v),
