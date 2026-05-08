@@ -1,4 +1,4 @@
-use super::*;
+use crate::*;
 
 pub fn lower_decls(raw: Vec<Decl<String>>, interner: &mut Interner) -> Vec<Decl<Sym>> {
     raw.into_iter().map(|d| lower_decl(d, interner)).collect()

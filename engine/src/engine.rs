@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::interner::Interner;
-use crate::lower;
-use crate::parse;
+use crate::parsing::{lower, parse};
 use crate::types::{Decl, Defer, Interface, Schema};
 use crate::Sym;
 

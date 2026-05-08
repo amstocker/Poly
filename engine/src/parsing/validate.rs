@@ -1,4 +1,4 @@
-use super::{Defer, DirRef, Engine, Interface, Sym};
+use crate::{Defer, DirRef, Engine, Interface, Sym};
 
 
 // ============================================================================

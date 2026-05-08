@@ -20,7 +20,7 @@ Reference: https://arxiv.org/pdf/2312.00990
 
 Cargo workspace with two crates:
 
-- `engine/` — `poly-engine` (lib). **The active surface.** Public API: `Engine::load` + `Engine::query(query, env) -> Vec<Answer>` (one type, one method). The `query` module exposes the `Query` AST and `Goal` variants; `types` exposes the polynomial-functor schema AST. Everything else (`eval`, `simplify`, `parse`, `lower`, `validate`, `relations`, `fmt`, `interner`, `engine`) is `pub(crate)`.
+- `engine/` — `poly-engine` (lib). **The active surface.** Public API: `Engine::load` + `Engine::query(query, env) -> Vec<Answer>` (one type, one method). The `query` module exposes the `Query` AST and `Goal` variants; `types` exposes the polynomial-functor schema AST. Everything else (`eval`, `simplify`, `parsing/{parse,lower,validate}`, `relations`, `fmt`, `interner`, `engine`) is `pub(crate)`.
 - `cli/` — `poly` (bin). Thin renderer; no engine logic.
 - `examples/*.poly` — currently `counter.poly`, `graph.poly`, `grid.poly`, `test2.poly`; all parseable.
 - Only dependency: `chumsky` (parser combinators).

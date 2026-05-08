@@ -22,11 +22,9 @@ pub(crate) mod engine;
 pub(crate) mod eval;
 pub(crate) mod fmt;
 pub(crate) mod interner;
-pub(crate) mod lower;
-pub(crate) mod parse;
+pub(crate) mod parsing;
 pub(crate) mod relations;
 pub(crate) mod simplify;
-pub(crate) mod validate;
 
 pub use engine::{Engine, EngineError};
 pub use eval::Bindings;

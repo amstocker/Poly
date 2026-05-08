@@ -187,18 +187,23 @@ else is `pub(crate)`. Top-level re-exports: `Engine`, `EngineError`,
   `DeferEntry`, `Pattern`, `DirRef`, `DirMapping`, `Expr`, `Param`,
   `Type`, `Decl`. No transition field on `Direction`.
 - `interner.rs` — `Sym` + `Interner`.
-- `parse.rs` — chumsky parser; comment pre-pass; sugar rewrite (uses
-  parse-internal `RawDirection`/`RawTransition` so transitions never
-  leak past parsing).
-- `lower.rs` — `Decl<String>` → `Decl<Sym>`.
-- `validate.rs` — defer validation (positions exist, arities match,
-  abstract refs only on `::Internal` source).
+- `parsing/` — source → validated AST, the three sequential steps
+  `Engine::load` runs:
+    - `parsing/parse.rs` — chumsky parser; comment pre-pass; sugar
+      rewrite (uses parse-internal `RawDirection`/`RawTransition` so
+      transitions never leak past parsing).
+    - `parsing/lower.rs` — `Decl<String>` → `Decl<Sym>`.
+    - `parsing/validate.rs` — defer validation (positions exist,
+      arities match, abstract refs only on `::Internal` source).
 - `fmt.rs` — Display impls; round-trip with source; `fmt_facts` Datalog
   rendering.
-- `eval.rs` — `Value`, `Bindings`, `const_fold`, `conjoin`.
+- `eval.rs` — `Value`, `Bindings`, `const_fold`, `conjoin`. The
+  primitive expression-folding layer that `simplify` calls.
+- `simplify.rs` — residual reasoner. Iterated pipeline of algebraic
+  identities, equality substitution, and interval narrowing on top of
+  `eval::const_fold`.
 - `relations.rs` — `*_relation()` iterators on `Engine`; the queryable
   view of the loaded program.
-- `simplify.rs` — residual reasoner.
 - `engine.rs` — `Engine` struct, `EngineError`, `Engine::load`.
 
 ## Working hypothesis

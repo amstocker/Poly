@@ -1,6 +1,6 @@
 use chumsky::prelude::*;
 
-use super::{BinOp, Decl, Defer, DeferEntry, DirMapping, DirRef, Direction, Expr, Interface, Param,
+use crate::{BinOp, Decl, Defer, DeferEntry, DirMapping, DirRef, Direction, Expr, Interface, Param,
     Pattern, Position, Schema, SchemaBody, Type, UnOp, Variant};
 
 
