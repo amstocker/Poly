@@ -23,13 +23,21 @@ formats. Future consumers (the planned service) do the same.
 
 Open with this shape:
 
-- **Parameterized inputs.** Today queries take `Term::Sym(s)` for
-  bound names. To bind into parameterized positions (e.g. `Count[5]`)
-  with the param flowing into the answer's residual, we'll want a
-  pattern-shaped `Term` variant or a dedicated `Goal::PositionRef`.
-  `Goal::Reach` also currently ignores parameter args on entries —
-  resolving this is the same design call. Decide when a real call
-  site forces it.
+- **Parameterized queries (Stage A landed; Stage B open).**
+  `Goal::Position` now accepts `args: Vec<Expr<Sym>>` for concrete
+  arg values, substituted directly into the guard before the
+  simplifier runs. Tested against `grid.poly`: in-bounds /
+  out-of-bounds / symbolic args all behave correctly.
+  *Stage B (open)*: extending `Goal::Reach` (and a future
+  `Goal::Step`) to walk transitions whose target args depend on
+  the source's params — i.e., evolving `Coordinate(c.x, c.y)` to
+  `Coordinate(c.x - 1, c.y)` along a `Left` action. This is what
+  unlocks "find paths from Cell[a] to Cell[b] in Grid[W, H]" and
+  similar.
+  *Symmetric extension*: `Goal::Direction` (and `Goal::Iface`) could
+  take args by the same pattern, but no current example exercises
+  parameterized directions, and iface-level params are already
+  reachable via the `Bindings` env. Add when needed.
 - **Convenience constructors.** `Query::single`/`Query::or` is the
   whole API surface today. If common query shapes recur in CLI/tests,
   add small builder helpers (`Query::all_directions_at(iface, pos)`)

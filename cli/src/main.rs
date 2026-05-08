@@ -296,6 +296,7 @@ fn run_locate(eng: &Engine, action: &str) -> i32 {
         Goal::Position {
             iface: Term::Var(i_v),
             position: Term::Var(p_v),
+            args: Vec::new(),
             params: Slot::Anon,
             guard: Slot::Anon,
         },

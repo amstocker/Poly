@@ -93,6 +93,19 @@ parameter space may be infinite).
 `Goal::Where(Expr)` lets a caller push an arbitrary expression onto the
 answer's residual on top of the auto-accumulated guards.
 
+`Goal::Position { iface, position, args, params, guard }` accepts an
+optional `args: Vec<Expr<Sym>>` — concrete args supplied to the
+position's formal parameters. When non-empty, the args are substituted
+into the position's guard *before* it lands on the residual (rather
+than emitting `formal = arg` equalities, which would echo back into
+the output). Concrete args reduce the guard to true/false through the
+simplifier; symbolic args (`Expr::Var(some_sym)`) leave the guard
+parameterized by that name. Logic-variable args (`Term::Var`) aren't
+supported because the engine doesn't enumerate parameterized
+instances. Iface-level params (e.g. `Width` in `Grid[Width, Height]`)
+are bound via the `Bindings` env passed to `Engine::query`, not via
+goal args.
+
 `Goal::Reach { walk, from_iface, from_position, to_iface, to_position }`
 walks defer edges transitively from a concrete starting `(iface, pos)`.
 Forward follows `(defer.source, entry.source_pos) → (defer.target,

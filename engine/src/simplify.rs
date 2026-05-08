@@ -314,7 +314,7 @@ fn contains_var(e: &Expr<Sym>, v: Sym) -> bool {
     }
 }
 
-fn substitute(e: &Expr<Sym>, subst: &BTreeMap<Sym, Expr<Sym>>) -> Expr<Sym> {
+pub(crate) fn substitute(e: &Expr<Sym>, subst: &BTreeMap<Sym, Expr<Sym>>) -> Expr<Sym> {
     match e {
         Expr::Var(s) => subst.get(s).cloned().unwrap_or_else(|| e.clone()),
         Expr::LitInt(_) | Expr::LitStr(_) | Expr::LitBool(_) => e.clone(),

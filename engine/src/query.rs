@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use super::eval::{conjoin, Bindings};
-use super::simplify::reduce;
+use super::simplify::{reduce, substitute};
 use super::*;
 
 
@@ -73,7 +73,23 @@ pub enum Goal {
     IfaceInternal { internal: Term, external: Term },
     SchemaRecord { schema: Term, fields: Slot },
     SchemaSum { schema: Term, variants: Slot },
-    Position { iface: Term, position: Term, params: Slot, guard: Slot },
+    Position {
+        iface: Term,
+        position: Term,
+        /// Concrete args supplied to the position's formal parameters.
+        /// Empty = no arg constraint (matches any instance). When
+        /// non-empty, must match the arity of the position's formal
+        /// params; for each pair, an equality `formal = arg` is pushed
+        /// onto the answer's residual, so the simplifier substitutes
+        /// the arg through the position's guard. Args may be concrete
+        /// (`Coordinate(0, 0)`), arithmetic, or symbolic via
+        /// `Expr::Var(sym)`. Logic-variable args (`Term::Var`) are not
+        /// supported because the engine doesn't enumerate parameterized
+        /// instances.
+        args: Vec<Expr<Sym>>,
+        params: Slot,
+        guard: Slot,
+    },
     Direction {
         iface: Term, position: Term, action: Term, params: Slot, guard: Slot,
     },
@@ -286,15 +302,35 @@ fn match_goal<'a>(
                 Some(ans.with_subst(s))
             }),
         ),
-        Goal::Position { iface, position, params, guard } => Box::new(
+        Goal::Position { iface, position, args, params, guard } => Box::new(
             eng.position_relation().filter_map(move |(i_sym, p)| {
                 let s = unify_term(iface, i_sym, &ans.subst)?;
                 let s = unify_term(position, p.name, &s)?;
+                // Arity check: query supplied args must match formal-param
+                // count if non-empty. Empty `args` means no arg constraint.
+                if !args.is_empty() && args.len() != p.params.len() {
+                    return None;
+                }
                 let s = unify_slot(params, Value::Params(p.params.clone()), &s)?;
                 let s = unify_slot(guard, Value::Guard(p.guard.clone()), &s)?;
                 let mut next = ans.with_subst(s);
+                // Substitute the query's args directly into the position
+                // guard before pushing it onto the residual. We don't emit
+                // equalities (`formal = arg`) because the simplifier would
+                // surface them in the output residual; the args are
+                // internal plumbing, not constraints the caller wants
+                // back. Empty `args` skips substitution.
                 if let Some(g) = &p.guard {
-                    next.residual.push(g.clone());
+                    let g_subst = if args.is_empty() {
+                        g.clone()
+                    } else {
+                        let mut sub: BTreeMap<Sym, Expr<Sym>> = BTreeMap::new();
+                        for (formal, arg) in p.params.iter().zip(args.iter()) {
+                            sub.insert(formal.name, arg.clone());
+                        }
+                        substitute(g, &sub)
+                    };
+                    next.residual.push(g_subst);
                 }
                 Some(next)
             }),
@@ -612,6 +648,7 @@ mod tests {
             Goal::Position {
                 iface: Term::Var(i_var),
                 position: Term::Var(p_var),
+                args: Vec::new(),
                 params: Slot::Anon,
                 guard: Slot::Anon,
             },
@@ -994,6 +1031,7 @@ mod tests {
         let q = Query::single(vec![Goal::Position {
             iface: Term::Sym(counter),
             position: Term::Sym(count),
+            args: Vec::new(),
             params: Slot::Anon,
             guard: Slot::Anon,
         }]);
@@ -1159,5 +1197,97 @@ mod tests {
         let expected: BTreeSet<(Sym, Sym)> =
             [(a, state_a), (b, state_b), (c, state_c)].into_iter().collect();
         assert_eq!(pairs, expected);
+    }
+
+
+    // ========================================================================
+    // Goal::Position with concrete args (grid.poly)
+    //
+    // Stage A of parameterized queries: query supplies args for the
+    // position's formal parameters; equalities are pushed onto the
+    // residual; the simplifier substitutes through the position guard.
+    // ========================================================================
+
+    /// Build a `Bindings` env with `Width = w, Height = h` for grid.poly.
+    fn grid_env(eng: &Engine, w: i64, h: i64) -> Bindings {
+        let mut env = Bindings::default();
+        let width = eng.interner.find("Width").unwrap();
+        let height = eng.interner.find("Height").unwrap();
+        env.insert(width, super::super::eval::Value::Int(w));
+        env.insert(height, super::super::eval::Value::Int(h));
+        env
+    }
+
+    /// Build `Coordinate(x, y)` as an `Expr<Sym>`.
+    fn coord_expr(eng: &Engine, x: i64, y: i64) -> Expr<Sym> {
+        let coord = eng.interner.find("Coordinate").unwrap();
+        Expr::Construct(
+            coord,
+            vec![Expr::LitInt(x), Expr::LitInt(y)],
+        )
+    }
+
+    fn cell_query(eng: &Engine, args: Vec<Expr<Sym>>) -> Query {
+        let grid = eng.interner.find("Grid").unwrap();
+        let cell = eng.interner.find("Cell").unwrap();
+        Query::single(vec![Goal::Position {
+            iface: Term::Sym(grid),
+            position: Term::Sym(cell),
+            args,
+            params: Slot::Anon,
+            guard: Slot::Anon,
+        }])
+    }
+
+    #[test]
+    fn cell_in_bounds_yields_one_answer_with_empty_residual() {
+        // Cell[Coordinate(5, 5)] in Grid[10, 10]: guard `1 <= 5 <= 10 ∧ 1 <= 5 <= 10`
+        // reduces to true under the simplifier, so the residual clears.
+        let eng = load("examples/grid.poly");
+        let q = cell_query(&eng, vec![coord_expr(&eng, 5, 5)]);
+        let env = grid_env(&eng, 10, 10);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
+        assert_eq!(answers.len(), 1);
+        assert!(
+            answers[0].residual.is_empty(),
+            "residual should clear, got {:?}",
+            answers[0].residual,
+        );
+    }
+
+    #[test]
+    fn cell_out_of_bounds_drops_the_answer() {
+        // Cell[Coordinate(11, 5)] in Grid[10, 10]: guard `... ∧ 11 <= 10 ∧ ...`
+        // reduces to false; the answer is dropped.
+        let eng = load("examples/grid.poly");
+        let q = cell_query(&eng, vec![coord_expr(&eng, 11, 5)]);
+        let env = grid_env(&eng, 10, 10);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
+        assert!(
+            answers.is_empty(),
+            "out-of-bounds Cell should be dropped, got {answers:?}",
+        );
+    }
+
+    #[test]
+    fn cell_symbolic_carries_guard_in_residual() {
+        // Cell[c] (the same `c` the schema uses), no env: equality `c = c`
+        // collapses to true; the position guard remains as the residual,
+        // unchanged.
+        let eng = load("examples/grid.poly");
+        let c_sym = eng.interner.find("c").unwrap();
+        let q = cell_query(&eng, vec![Expr::Var(c_sym)]);
+        let answers: Vec<_> = eng.query(&q, &Bindings::default()).collect();
+        assert_eq!(answers.len(), 1);
+        assert_eq!(
+            answers[0].residual.len(),
+            1,
+            "expected one conjoined residual, got {:?}",
+            answers[0].residual,
+        );
+        // The residual should mention Width and Height symbolically.
+        let rendered = eng.fmt_expr(&answers[0].residual[0], 0);
+        assert!(rendered.contains("Width"), "expected Width in {rendered}");
+        assert!(rendered.contains("Height"), "expected Height in {rendered}");
     }
 }
