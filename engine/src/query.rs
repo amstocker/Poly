@@ -56,6 +56,17 @@ pub enum DirRefPat {
     },
 }
 
+/// Direction of a transitive defer walk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Walk {
+    /// Follow defer entries `(defer.source, entry.source_pos) ->
+    /// (defer.target, entry.target_pos)`.
+    Forward,
+    /// Follow defer entries in reverse: `(defer.target, entry.target_pos)
+    /// -> (defer.source, entry.source_pos)`.
+    Backward,
+}
+
 #[derive(Clone, Debug)]
 pub enum Goal {
     Iface { iface: Term, params: Slot },
@@ -75,6 +86,19 @@ pub enum Goal {
     DeferDir {
         defer: Term, entry_idx: IndexSlot,
         target_dir: DirRefPat, source_dir: DirRefPat,
+    },
+    /// Transitive walk over defer edges. Starting from `(from_iface,
+    /// from_position)` (which must resolve to concrete `Sym`s in the
+    /// current answer's substitution), yields every `(iface, position)`
+    /// reachable by following defer edges in the given `walk` direction
+    /// — including the starting pair itself (0-hop). A visited set
+    /// terminates cycles.
+    Reach {
+        walk: Walk,
+        from_iface: Term,
+        from_position: Term,
+        to_iface: Term,
+        to_position: Term,
     },
     /// A user-written constraint. The expression is added to the answer's
     /// residual; goals never short-circuit on residuals during search — the
@@ -321,8 +345,94 @@ fn match_goal<'a>(
                 Some(ans.with_subst(s))
             }),
         ),
+        Goal::Reach { walk, from_iface, from_position, to_iface, to_position } => {
+            // Resolve the starting (iface, position) to concrete Syms via
+            // the current substitution. If either is unbound, the goal
+            // fails (no answers); the caller should ground the start.
+            let Some(start_iface) = resolve_term(from_iface, &ans.subst) else {
+                return Box::new(std::iter::empty());
+            };
+            let Some(start_pos) = resolve_term(from_position, &ans.subst) else {
+                return Box::new(std::iter::empty());
+            };
+            let reachable = collect_reachable(eng, start_iface, start_pos, *walk);
+            Box::new(reachable.into_iter().filter_map(move |(i, p)| {
+                let s = unify_term(to_iface, i, &ans.subst)?;
+                let s = unify_term(to_position, p, &s)?;
+                Some(ans.with_subst(s))
+            }))
+        }
         Goal::Where(expr) => Box::new(std::iter::once(ans.push_residual(expr.clone()))),
     }
+}
+
+
+// ============================================================================
+// Reachability via defer chains (Goal::Reach)
+// ============================================================================
+
+/// Resolve a `Term` to a concrete `Sym` if possible.
+fn resolve_term(t: &Term, subst: &Subst) -> Option<Sym> {
+    match t {
+        Term::Sym(s) => Some(*s),
+        Term::Var(v) => match subst.get(v) {
+            Some(Value::Sym(s)) => Some(*s),
+            _ => None,
+        },
+        Term::Anon => None,
+    }
+}
+
+/// BFS from `(start_iface, start_pos)` over defer edges in the given
+/// direction, yielding each reachable pair (including the start) in
+/// discovery order with cycles handled by a visited set.
+fn collect_reachable(
+    eng: &Engine,
+    start_iface: Sym,
+    start_pos: Sym,
+    walk: Walk,
+) -> Vec<(Sym, Sym)> {
+    use std::collections::{BTreeSet, VecDeque};
+    let mut visited: BTreeSet<(Sym, Sym)> = BTreeSet::new();
+    let mut queue: VecDeque<(Sym, Sym)> = VecDeque::new();
+    let mut out: Vec<(Sym, Sym)> = Vec::new();
+
+    queue.push_back((start_iface, start_pos));
+    visited.insert((start_iface, start_pos));
+    while let Some((i, p)) = queue.pop_front() {
+        out.push((i, p));
+        for next in step(eng, i, p, walk) {
+            if visited.insert(next) {
+                queue.push_back(next);
+            }
+        }
+    }
+    out
+}
+
+/// One-hop neighbours of `(iface, pos)` via defer entries in the given
+/// direction.
+fn step(eng: &Engine, iface: Sym, pos: Sym, walk: Walk) -> Vec<(Sym, Sym)> {
+    let mut out = Vec::new();
+    for d in eng.defer_relation() {
+        let touches_iface = match walk {
+            Walk::Forward => d.source == iface,
+            Walk::Backward => d.target == iface,
+        };
+        if !touches_iface {
+            continue;
+        }
+        for entry in &d.entries {
+            let (match_pos, next_iface, next_pos) = match walk {
+                Walk::Forward => (entry.source_pos, d.target, entry.target_pos),
+                Walk::Backward => (entry.target_pos, d.source, entry.source_pos),
+            };
+            if match_pos == pos {
+                out.push((next_iface, next_pos));
+            }
+        }
+    }
+    out
 }
 
 
@@ -946,5 +1056,108 @@ mod tests {
             }
             other => panic!("expected `n > 5`, got {other:?}"),
         }
+    }
+
+
+    // ========================================================================
+    // Goal::Reach — transitive defer walks
+    // ========================================================================
+
+    #[test]
+    fn reach_forward_chain_two_hops() {
+        // chain.poly: A.StateA --Defer1--> B.StateB --Defer2--> C.StateC.
+        // Walking forward from (A, StateA) should reach all three pairs.
+        let eng = load("examples/chain.poly");
+        let a = eng.interner.find("InterfaceA").unwrap();
+        let b = eng.interner.find("InterfaceB").unwrap();
+        let c = eng.interner.find("InterfaceC").unwrap();
+        let state_a = eng.interner.find("StateA").unwrap();
+        let state_b = eng.interner.find("StateB").unwrap();
+        let state_c = eng.interner.find("StateC").unwrap();
+
+        let mut g = VarGen::new();
+        let to_iface = g.fresh();
+        let to_pos = g.fresh();
+        let q = Query::single(vec![Goal::Reach {
+            walk: Walk::Forward,
+            from_iface: Term::Sym(a),
+            from_position: Term::Sym(state_a),
+            to_iface: Term::Var(to_iface),
+            to_position: Term::Var(to_pos),
+        }]);
+        let pairs: BTreeSet<(Sym, Sym)> = eng
+            .query(&q, &Bindings::default())
+            .map(|ans| (answer_sym(&ans, to_iface), answer_sym(&ans, to_pos)))
+            .collect();
+        let expected: BTreeSet<(Sym, Sym)> =
+            [(a, state_a), (b, state_b), (c, state_c)].into_iter().collect();
+        assert_eq!(pairs, expected);
+    }
+
+    #[test]
+    fn reach_forward_then_direction_finds_action_via_chain() {
+        // The motivating use case: "given InterfaceA at StateA, what
+        // actions are possible at InterfaceC?" Answer: ActionC.
+        let eng = load("examples/chain.poly");
+        let a = eng.interner.find("InterfaceA").unwrap();
+        let c = eng.interner.find("InterfaceC").unwrap();
+        let state_a = eng.interner.find("StateA").unwrap();
+        let action_c = eng.interner.find("ActionC").unwrap();
+
+        let mut g = VarGen::new();
+        let pos_at_c = g.fresh();
+        let action = g.fresh();
+        let q = Query::single(vec![
+            Goal::Reach {
+                walk: Walk::Forward,
+                from_iface: Term::Sym(a),
+                from_position: Term::Sym(state_a),
+                to_iface: Term::Sym(c),
+                to_position: Term::Var(pos_at_c),
+            },
+            Goal::Direction {
+                iface: Term::Sym(c),
+                position: Term::Var(pos_at_c),
+                action: Term::Var(action),
+                params: Slot::Anon,
+                guard: Slot::Anon,
+            },
+        ]);
+        let actions: BTreeSet<Sym> = eng
+            .query(&q, &Bindings::default())
+            .map(|ans| answer_sym(&ans, action))
+            .collect();
+        let expected: BTreeSet<Sym> = [action_c].into_iter().collect();
+        assert_eq!(actions, expected);
+    }
+
+    #[test]
+    fn reach_backward_chain_two_hops() {
+        // Walking backward from (C, StateC) should reach C, B, A.
+        let eng = load("examples/chain.poly");
+        let a = eng.interner.find("InterfaceA").unwrap();
+        let b = eng.interner.find("InterfaceB").unwrap();
+        let c = eng.interner.find("InterfaceC").unwrap();
+        let state_a = eng.interner.find("StateA").unwrap();
+        let state_b = eng.interner.find("StateB").unwrap();
+        let state_c = eng.interner.find("StateC").unwrap();
+
+        let mut g = VarGen::new();
+        let to_iface = g.fresh();
+        let to_pos = g.fresh();
+        let q = Query::single(vec![Goal::Reach {
+            walk: Walk::Backward,
+            from_iface: Term::Sym(c),
+            from_position: Term::Sym(state_c),
+            to_iface: Term::Var(to_iface),
+            to_position: Term::Var(to_pos),
+        }]);
+        let pairs: BTreeSet<(Sym, Sym)> = eng
+            .query(&q, &Bindings::default())
+            .map(|ans| (answer_sym(&ans, to_iface), answer_sym(&ans, to_pos)))
+            .collect();
+        let expected: BTreeSet<(Sym, Sym)> =
+            [(a, state_a), (b, state_b), (c, state_c)].into_iter().collect();
+        assert_eq!(pairs, expected);
     }
 }

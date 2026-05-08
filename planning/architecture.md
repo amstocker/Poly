@@ -93,17 +93,34 @@ parameter space may be infinite).
 `Goal::Where(Expr)` lets a caller push an arbitrary expression onto the
 answer's residual on top of the auto-accumulated guards.
 
+`Goal::Reach { walk, from_iface, from_position, to_iface, to_position }`
+walks defer edges transitively from a concrete starting `(iface, pos)`.
+Forward follows `(defer.source, entry.source_pos) → (defer.target,
+entry.target_pos)`; backward follows the inverse. BFS with a visited
+set; yields each reachable pair (including the start) for the
+unifier to filter against `to_iface`/`to_position`. The motivating use
+case is "given InterfaceA at StateA, what's possible at InterfaceC?"
+across a chain of defers — composes with `Goal::Direction` on the
+result.
+
 An `Answer` is a `Subst` (var → value) plus a `residual: Vec<Expr<Sym>>`.
 Empty residual means the answer is unconditionally true; otherwise the
 residual is a conjunction of constraints under which the answer holds.
 
-`Engine::query(query, env)` solves each disjunct against the loaded
-program, accumulates residuals, runs the simplifier on the conjoined
-residual, and returns the surviving answers:
+`Engine::query(query, env)` returns an `Answers<'a>` iterator. The
+solver is depth-first with explicit backtracking via a `Vec<Frame>`
+stack: pull from the top frame's per-goal match iterator, push for the
+next goal, pop when exhausted, advance to the next disjunct when the
+stack drains. The simplifier runs as a per-answer `filter_map` step
+inside `next()`:
 
 - residual reduces to `true` → cleared on the answer.
-- residual reduces to `false` → answer dropped.
+- residual reduces to `false` → answer dropped (silently skipped).
 - otherwise → kept as a single conjunct on the residual.
+
+Lazy iteration matters for query shapes with infinite valid completions
+(e.g. parameterized states with no upper bound); consumers can `.take(n)`
+or filter without forcing the whole answer space.
 
 ## Simplifier
 

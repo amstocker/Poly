@@ -7,15 +7,19 @@ Open work, with status. Closed items live in the session logs under `log/`.
 ### One Engine, one query method
 
 The public surface is intentionally minimal: `Engine::load` to load a
-program, `Engine::query(query, env) -> Vec<Answer>` to ask anything
-about it. Caller composes a `Query` from `Goal`s; engine returns
-answers with simplified residuals. Anything more domain-specific
-(typed `ExplainResult` structs, JSON wire format, …) is built *on top*
-by the consumer, not in the engine.
+program, `Engine::query(query, env) -> Answers<'_>` (lazy iterator) to
+ask anything about it. Caller composes a `Query` from `Goal`s; engine
+returns an iterator of answers with simplified residuals. Anything
+more domain-specific (typed result structs, JSON wire format, …) is
+built *on top* by the consumer, not in the engine.
 
-The CLI itself is the proving ground: `--explain` and `--locate`
-construct `Query` values inline and project the answers into their
-display formats. Future consumers (the planned service) do the same.
+`Goal::Reach { walk, from, to }` walks defer edges transitively (BFS
+with visited set, both directions). The motivating "given A.StateA,
+what's possible at C through any chain of defers?" works today.
+
+The CLI is the proving ground: `--explain` and `--locate` construct
+`Query` values inline and project the answers into their display
+formats. Future consumers (the planned service) do the same.
 
 Open with this shape:
 
@@ -23,7 +27,9 @@ Open with this shape:
   bound names. To bind into parameterized positions (e.g. `Count[5]`)
   with the param flowing into the answer's residual, we'll want a
   pattern-shaped `Term` variant or a dedicated `Goal::PositionRef`.
-  Decide when a real call site forces it.
+  `Goal::Reach` also currently ignores parameter args on entries —
+  resolving this is the same design call. Decide when a real call
+  site forces it.
 - **Convenience constructors.** `Query::single`/`Query::or` is the
   whole API surface today. If common query shapes recur in CLI/tests,
   add small builder helpers (`Query::all_directions_at(iface, pos)`)
