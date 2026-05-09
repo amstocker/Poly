@@ -106,6 +106,18 @@ instances. Iface-level params (e.g. `Width` in `Grid[Width, Height]`)
 are bound via the `Bindings` env passed to `Engine::query`, not via
 goal args.
 
+`Goal::Path { iface, from_position, from_args, to_position, to_args,
+path, max_depth }` is BFS over state-machine action edges. Each
+reachable state is yielded once with the shortest discovered path
+(visited set keyed on `(pos, folded_args)`); the start is yielded
+with an empty path. Folds destination args + guards under `env`;
+drops candidates whose guard reduces to literal false. Symbolic
+guards are kept (not dropped). `to_position`/`to_args` filter the
+yielded set; `path` binds the action sequence as `Value::Path(Vec<Sym>)`.
+`from_args` should fold to fully concrete values for the visited
+canonicalization to work; otherwise `max_depth` becomes the
+termination guarantee.
+
 `Goal::Step { iface, from_position, from_args, action, to_position,
 to_args }` is one transition along a state-machine action. Looks up
 the realization defer (`Foo::Run`), finds the entry whose

@@ -23,28 +23,33 @@ formats. Future consumers (the planned service) do the same.
 
 Open with this shape:
 
-- **Parameterized queries (Stages A + B landed; transitive case open).**
-  `Goal::Position` accepts `args: Vec<Expr<Sym>>` (Stage A); the new
+- **Parameterized queries (Stages A + B + C landed).**
+  `Goal::Position` accepts `args: Vec<Expr<Sym>>` (Stage A);
   `Goal::Step` does one-hop transitions along state-machine actions
-  (Stage B), substituting from_args through abstract direction refs
-  and emitting the destination's substituted guard onto the residual.
-  Tested against grid.poly (Right/Left at Cell, with edge case) and
-  counter.poly (Increment at Count[n]).
-  *Open (Stage C)*: transitive closure over Step edges with action-
-  history tracking. The simplest path: a `Goal::Path` that does BFS/
-  DFS over Step, yielding `(end_pos, end_args, [action seq])`. Or:
-  do path-finding outside the query as a free function on Engine,
-  and decide what subset becomes a query goal once we see the call
-  pattern.
-  *Bridging issue*: `Goal::Step` binds `to_args` via `Slot` (returns
-  `Value::Args`), but `from_args` is `Vec<Expr<Sym>>`. Chaining two
-  Steps in one query requires a way to read out `Value::Args` and
-  re-feed it as the next Step's `from_args`. Probably means a Term
-  variant that resolves to args, or a different chaining shape.
-  *Symmetric extension*: `Goal::Direction` (and `Goal::Iface`) could
-  take args by the same pattern, but no current example exercises
-  parameterized directions, and iface-level params are already
-  reachable via the `Bindings` env. Add when needed.
+  (Stage B); `Goal::Path` does BFS over Step edges with action-history
+  tracking and visited dedup (Stage C). Path-finding "from
+  Cell[(0,0)] to Cell[(4,5)] in Grid[10,10]" works and is tested.
+  *Open extensions*:
+  - **User-composable chaining.** `Goal::Step`'s `to_args` is a
+    `Slot` (binds `Value::Args`); next-Step's `from_args` is
+    `Vec<Expr<Sym>>`. No current way to feed one to the other in a
+    single query. Would need a `Term`-or-similar variant that
+    resolves slot bindings as input args. Useful if a real call site
+    wants to write multi-step queries by hand. Defer until then.
+  - **All-paths enumeration.** `Goal::Path` dedupes via visited, so
+    each end-state surfaces once with the shortest path. A
+    combinatorial enumeration ("every distinct action sequence up to
+    depth N") is a different goal — `Goal::AllPaths` if needed.
+  - **Backward `Step`/`Path`.** Today only forward (along the
+    realization defer). Backward stepping (given a destination,
+    invert symbolic `tgt_args`) is hairier; leave until needed.
+  - **Cross-position state machines.** `collect_action_steps`
+    assumes `tgt_pos` is reachable in the same iface — true for the
+    sugar's per-position entries, may not hold for hand-written
+    defers between distinct positions.
+  - **Goal::Direction / Goal::Iface args.** Same pattern as Stage A
+    if we ever need parameterized directions or want goal-level
+    iface-arg constraints (today via `Bindings` env).
 - **Convenience constructors.** `Query::single`/`Query::or` is the
   whole API surface today. If common query shapes recur in CLI/tests,
   add small builder helpers (`Query::all_directions_at(iface, pos)`)

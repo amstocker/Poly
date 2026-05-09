@@ -138,6 +138,30 @@ pub enum Goal {
         to_position: Term,
         to_args: Slot,
     },
+    /// Find action paths from `(iface, from_position, from_args)` to
+    /// reachable destinations. BFS over `Step` edges with a visited set
+    /// keyed on `(pos, folded_args)`; each reachable state is yielded
+    /// exactly once, with the shortest action sequence discovered. The
+    /// start state itself is yielded with an empty path (depth 0).
+    ///
+    /// `from_args` must fold to a fully concrete value under the env
+    /// — the visited set requires evaluable args. Symbolic starts
+    /// yield no answers.
+    ///
+    /// `to_position` (a `Term`) and `to_args` (a `Vec<Expr<Sym>>`,
+    /// empty = no constraint) filter the yielded set: only reached
+    /// states matching them surface. `path` binds `Value::Path(Vec<Sym>)`
+    /// — the action names traversed, in order. `max_depth` optionally
+    /// caps BFS depth.
+    Path {
+        iface: Term,
+        from_position: Term,
+        from_args: Vec<Expr<Sym>>,
+        to_position: Term,
+        to_args: Vec<Expr<Sym>>,
+        path: Slot,
+        max_depth: Option<usize>,
+    },
     /// A user-written constraint. The expression is added to the answer's
     /// residual; goals never short-circuit on residuals during search — the
     /// simplifier resolves them once at the end of the query.
@@ -173,6 +197,9 @@ pub enum Value {
     Args(Vec<Expr<Sym>>),
     Pattern(Vec<Pattern<Sym>>),
     DirRef(DirRef<Sym>),
+    /// A sequence of action names — the path produced by `Goal::Path`'s
+    /// BFS over state-machine transitions.
+    Path(Vec<Sym>),
 }
 
 pub type Subst = BTreeMap<VarId, Value>;
@@ -293,6 +320,7 @@ fn unify_dir_ref_pat(
 fn match_goal<'a>(
     goal: &'a Goal,
     eng: &'a Engine,
+    env: &'a Bindings,
     ans: Answer,
 ) -> Box<dyn Iterator<Item = Answer> + 'a> {
     match goal {
@@ -452,6 +480,49 @@ fn match_goal<'a>(
                     next.residual.push(g);
                 }
                 Some(next)
+            }))
+        }
+        Goal::Path {
+            iface,
+            from_position,
+            from_args,
+            to_position,
+            to_args,
+            path,
+            max_depth,
+        } => {
+            let Some(iface_sym) = resolve_term(iface, &ans.subst) else {
+                return Box::new(std::iter::empty());
+            };
+            let Some(from_pos_sym) = resolve_term(from_position, &ans.subst) else {
+                return Box::new(std::iter::empty());
+            };
+            let reachable = collect_action_paths(
+                eng,
+                env,
+                iface_sym,
+                from_pos_sym,
+                from_args,
+                *max_depth,
+            );
+            Box::new(reachable.into_iter().filter_map(move |reached| {
+                let s = unify_term(to_position, reached.pos, &ans.subst)?;
+                // If the user supplied to_args, require structural
+                // equality with the (folded) reached args.
+                if !to_args.is_empty() {
+                    if to_args.len() != reached.args.len() {
+                        return None;
+                    }
+                    for (want, got) in to_args.iter().zip(reached.args.iter()) {
+                        let want_folded =
+                            super::eval::const_fold(eng, want, env);
+                        if &want_folded != got {
+                            return None;
+                        }
+                    }
+                }
+                let s = unify_slot(path, Value::Path(reached.path.clone()), &s)?;
+                Some(ans.with_subst(s))
             }))
         }
         Goal::Where(expr) => Box::new(std::iter::once(ans.push_residual(expr.clone()))),
@@ -650,6 +721,99 @@ fn bind_pattern(
 
 
 // ============================================================================
+// Path-finding via BFS over Step edges (Goal::Path)
+// ============================================================================
+
+/// One reached state in the BFS: position name, evaluated (folded)
+/// args, and the action sequence that got us there.
+struct ReachedPath {
+    pos: Sym,
+    args: Vec<Expr<Sym>>,
+    path: Vec<Sym>,
+}
+
+/// BFS from `(iface, from_pos, from_args)` along state-machine action
+/// transitions. The visited set is keyed on `(pos, folded_args)` so
+/// each reachable state is yielded once with the shortest discovered
+/// path (BFS order). Folding uses `env`, so iface-level params
+/// (e.g. `Width`) substitute through arithmetic. A destination whose
+/// guard folds to `false` under `env` is skipped — anything else (true
+/// or symbolic) is enqueued. The starting state is yielded with an
+/// empty path (depth 0).
+fn collect_action_paths(
+    eng: &Engine,
+    env: &Bindings,
+    iface: Sym,
+    from_pos: Sym,
+    from_args: &[Expr<Sym>],
+    max_depth: Option<usize>,
+) -> Vec<ReachedPath> {
+    use std::collections::VecDeque;
+    use super::eval::const_fold;
+
+    let folded_start: Vec<Expr<Sym>> =
+        from_args.iter().map(|e| const_fold(eng, e, env)).collect();
+    let mut visited: Vec<(Sym, Vec<Expr<Sym>>)> = Vec::new();
+    let mut queue: VecDeque<ReachedPath> = VecDeque::new();
+    let mut out: Vec<ReachedPath> = Vec::new();
+
+    visited.push((from_pos, folded_start.clone()));
+    queue.push_back(ReachedPath {
+        pos: from_pos,
+        args: folded_start,
+        path: Vec::new(),
+    });
+
+    while let Some(node) = queue.pop_front() {
+        // Yield this state. (Always include the start at depth 0.)
+        out.push(ReachedPath {
+            pos: node.pos,
+            args: node.args.clone(),
+            path: node.path.clone(),
+        });
+        // Stop expanding at max_depth.
+        if let Some(max) = max_depth {
+            if node.path.len() >= max {
+                continue;
+            }
+        }
+        // Try every named action available at this position.
+        let Some(iface_decl) = eng.interfaces.get(&iface) else { continue };
+        let Some(pos_decl) = iface_decl.position(&node.pos) else { continue };
+        for dir in &pos_decl.directions {
+            for step in collect_action_steps(eng, iface, node.pos, &node.args, dir.name) {
+                // Drop transitions whose destination guard folds to literal false.
+                if let Some(g) = &step.guard {
+                    let folded = const_fold(eng, g, env);
+                    if matches!(folded, Expr::LitBool(false)) {
+                        continue;
+                    }
+                }
+                let folded_args: Vec<Expr<Sym>> = step
+                    .tgt_args
+                    .iter()
+                    .map(|e| const_fold(eng, e, env))
+                    .collect();
+                let key = (step.tgt_pos, folded_args.clone());
+                if visited.iter().any(|v| v == &key) {
+                    continue;
+                }
+                visited.push(key);
+                let mut new_path = node.path.clone();
+                new_path.push(dir.name);
+                queue.push_back(ReachedPath {
+                    pos: step.tgt_pos,
+                    args: folded_args,
+                    path: new_path,
+                });
+            }
+        }
+    }
+    out
+}
+
+
+// ============================================================================
 // Solver — explicit-stack, iteration-based
 // ============================================================================
 
@@ -693,7 +857,7 @@ impl<'a> Iterator for Answers<'a> {
                 let body = &self.bodies[self.body_idx];
                 self.body_idx += 1;
                 if let Some((first, rest)) = body.split_first() {
-                    let matches = match_goal(first, self.eng, Answer::empty());
+                    let matches = match_goal(first, self.eng, self.env, Answer::empty());
                     self.stack.push(Frame { rest_goals: rest, matches });
                 } else {
                     // Vacuously-true body: yield the empty answer (modulo
@@ -720,7 +884,7 @@ impl<'a> Iterator for Answers<'a> {
                 Some(ans) => match rest_goals.split_first() {
                     Some((next_goal, new_rest)) => {
                         // More goals: push a frame for the next one.
-                        let matches = match_goal(next_goal, self.eng, ans);
+                        let matches = match_goal(next_goal, self.eng, self.env, ans);
                         self.stack.push(Frame { rest_goals: new_rest, matches });
                     }
                     None => {
@@ -1556,6 +1720,154 @@ mod tests {
             }
             other => panic!("expected Value::Args([4]), got {other:?}"),
         }
+    }
+
+    // ========================================================================
+    // Goal::Path — BFS over Step edges with action-path tracking
+    // ========================================================================
+
+    /// Helper: read a Vec<Sym> action sequence out of the answer's `path`
+    /// slot, resolving Syms to their string names.
+    fn answer_path<'a>(eng: &'a Engine, ans: &'a Answer, v: VarId) -> Vec<&'a str> {
+        match ans.subst.get(&v) {
+            Some(Value::Path(syms)) => syms.iter().map(|s| eng.resolve(*s)).collect(),
+            other => panic!("expected Value::Path, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn path_to_self_is_empty() {
+        // From Cell[(3, 3)] to Cell[(3, 3)]: zero hops.
+        let eng = load("examples/grid.poly");
+        let grid = eng.interner.find("Grid").unwrap();
+        let cell = eng.interner.find("Cell").unwrap();
+
+        let mut g = VarGen::new();
+        let path_v = g.fresh();
+        let q = Query::single(vec![Goal::Path {
+            iface: Term::Sym(grid),
+            from_position: Term::Sym(cell),
+            from_args: vec![coord_expr(&eng, 3, 3)],
+            to_position: Term::Sym(cell),
+            to_args: vec![coord_expr(&eng, 3, 3)],
+            path: Slot::Var(path_v),
+            max_depth: Some(0),
+        }]);
+        let env = grid_env(&eng, 10, 10);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
+        assert_eq!(answers.len(), 1);
+        assert!(answer_path(&eng, &answers[0], path_v).is_empty());
+    }
+
+    #[test]
+    fn path_to_neighbour_is_one_action() {
+        // From Cell[(3, 3)] to Cell[(4, 3)]: one Right step.
+        let eng = load("examples/grid.poly");
+        let grid = eng.interner.find("Grid").unwrap();
+        let cell = eng.interner.find("Cell").unwrap();
+
+        let mut g = VarGen::new();
+        let path_v = g.fresh();
+        let q = Query::single(vec![Goal::Path {
+            iface: Term::Sym(grid),
+            from_position: Term::Sym(cell),
+            from_args: vec![coord_expr(&eng, 3, 3)],
+            to_position: Term::Sym(cell),
+            to_args: vec![coord_expr(&eng, 4, 3)],
+            path: Slot::Var(path_v),
+            max_depth: Some(5),
+        }]);
+        let env = grid_env(&eng, 10, 10);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
+        assert_eq!(answers.len(), 1);
+        assert_eq!(answer_path(&eng, &answers[0], path_v), vec!["Right"]);
+    }
+
+    #[test]
+    fn path_finds_shortest_route() {
+        // From Cell[(1, 1)] to Cell[(3, 2)] in Grid[10, 10]: shortest path
+        // is 3 hops (some interleaving of two Rs and one D, depending on
+        // BFS expansion order).
+        let eng = load("examples/grid.poly");
+        let grid = eng.interner.find("Grid").unwrap();
+        let cell = eng.interner.find("Cell").unwrap();
+
+        let mut g = VarGen::new();
+        let path_v = g.fresh();
+        let q = Query::single(vec![Goal::Path {
+            iface: Term::Sym(grid),
+            from_position: Term::Sym(cell),
+            from_args: vec![coord_expr(&eng, 1, 1)],
+            to_position: Term::Sym(cell),
+            to_args: vec![coord_expr(&eng, 3, 2)],
+            path: Slot::Var(path_v),
+            max_depth: Some(10),
+        }]);
+        let env = grid_env(&eng, 10, 10);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
+        // BFS yields the destination exactly once with the shortest path.
+        assert_eq!(answers.len(), 1);
+        let path = answer_path(&eng, &answers[0], path_v);
+        assert_eq!(path.len(), 3);
+        let r_count = path.iter().filter(|a| **a == "Right").count();
+        let d_count = path.iter().filter(|a| **a == "Down").count();
+        assert_eq!((r_count, d_count), (2, 1));
+    }
+
+    #[test]
+    fn path_max_depth_caps_search() {
+        // From Cell[(1, 1)] to Cell[(4, 4)] needs 6 hops; max_depth=3
+        // can't reach it.
+        let eng = load("examples/grid.poly");
+        let grid = eng.interner.find("Grid").unwrap();
+        let cell = eng.interner.find("Cell").unwrap();
+
+        let mut g = VarGen::new();
+        let path_v = g.fresh();
+        let q = Query::single(vec![Goal::Path {
+            iface: Term::Sym(grid),
+            from_position: Term::Sym(cell),
+            from_args: vec![coord_expr(&eng, 1, 1)],
+            to_position: Term::Sym(cell),
+            to_args: vec![coord_expr(&eng, 4, 4)],
+            path: Slot::Var(path_v),
+            max_depth: Some(3),
+        }]);
+        let env = grid_env(&eng, 10, 10);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
+        assert!(answers.is_empty(), "depth 3 cannot reach (4,4) from (1,1)");
+    }
+
+    #[test]
+    fn path_open_destination_yields_reachable_set() {
+        // No to_args constraint, max_depth=2 from Cell[(5, 5)]:
+        // expect to see (5,5) at depth 0, plus 4 neighbours at depth 1,
+        // plus more at depth 2. The set should be larger than 5.
+        let eng = load("examples/grid.poly");
+        let grid = eng.interner.find("Grid").unwrap();
+        let cell = eng.interner.find("Cell").unwrap();
+
+        let mut g = VarGen::new();
+        let path_v = g.fresh();
+        let q = Query::single(vec![Goal::Path {
+            iface: Term::Sym(grid),
+            from_position: Term::Sym(cell),
+            from_args: vec![coord_expr(&eng, 5, 5)],
+            to_position: Term::Sym(cell),
+            to_args: Vec::new(),
+            path: Slot::Var(path_v),
+            max_depth: Some(2),
+        }]);
+        let env = grid_env(&eng, 10, 10);
+        let answers: Vec<_> = eng.query(&q, &env).collect();
+        // Depth 0: 1 state (start). Depth 1: 4 neighbours. Depth 2: at
+        // most 4*4 = 16 but with dedup ~12. Total >= 13.
+        assert!(answers.len() >= 13, "got {} reached states", answers.len());
+        // Start is included with empty path.
+        let start_match = answers.iter().any(|a| {
+            matches!(a.subst.get(&path_v), Some(Value::Path(p)) if p.is_empty())
+        });
+        assert!(start_match);
     }
 
     #[test]
