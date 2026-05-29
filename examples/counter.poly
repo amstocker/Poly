@@ -7,13 +7,13 @@ state Counter
 interface Button
     { Press }
 
-# Vastly simplified this syntax...
+# Most mimimal syntax...
 #   1.  We don't need to say that `Count[_]` maps to the single
 #       anonymous state because that can be inferred.
 #   2.  We don't need to say the source of the transition because we know
 #       the source state being mapped, so we can just say the new state.
-defer SetTo10 : Counter -> Button
-    { Press -> Count[10] }
+#   3.  A defer can be anonymous as well.
+defer Counter -> Button { Press -> Count[10] }
 
 interface Button_2
     X { Press }
