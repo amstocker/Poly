@@ -4,6 +4,7 @@ state Counter
         Decrement if (n > 0) -> Count[n - 1]
     }
 
+# An interface can have a single anonymous state
 interface Button
     { Press }
 
