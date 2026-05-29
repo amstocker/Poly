@@ -21,13 +21,16 @@ defer Counter -> Button { Press -> Increment }
 # This one should be invalid, because the Decrement action is
 # not available in all states!  The Engine should infer this
 # and raise an error during parsing.
-defer Counter -> Button { Press -> Decrement }
+# 
+# defer Counter -> Button { Press -> Decrement }
 
-interface Button_2
-    X { Press }
+# Instead we should do:
+interface StatefulButton
+    Enabled { Press },
+    Disabled
 
-# A slightly more verbose example:
-defer SetTo10_2 : Counter -> Button_2
-    Count[_] -> X {
-        Press -> Count[10]
+defer DecrementButton: Counter -> StatefulButton
+    Count[0] -> Disabled,
+    Count[n] if (n > 0) -> Enabled {
+        Press -> Decrement
     }
