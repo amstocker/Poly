@@ -573,29 +573,14 @@ fn collect_reachable(
     out
 }
 
-/// One-hop neighbours of `(iface, pos)` via defer entries in the given
-/// direction.
+/// One-hop neighbours of `(iface, pos)` via the precomputed defer adjacency
+/// (built once at engine load).
 fn step(eng: &Engine, iface: Sym, pos: Sym, walk: Walk) -> Vec<(Sym, Sym)> {
-    let mut out = Vec::new();
-    for d in eng.defer_relation() {
-        let touches_iface = match walk {
-            Walk::Forward => d.source == iface,
-            Walk::Backward => d.target == iface,
-        };
-        if !touches_iface {
-            continue;
-        }
-        for entry in &d.entries {
-            let (match_pos, next_iface, next_pos) = match walk {
-                Walk::Forward => (entry.source_pos, d.target, entry.target_pos),
-                Walk::Backward => (entry.target_pos, d.source, entry.source_pos),
-            };
-            if match_pos == pos {
-                out.push((next_iface, next_pos));
-            }
-        }
-    }
-    out
+    let table = match walk {
+        Walk::Forward => &eng.index.defer_forward,
+        Walk::Backward => &eng.index.defer_backward,
+    };
+    table.get(&(iface, pos)).cloned().unwrap_or_default()
 }
 
 
@@ -624,21 +609,12 @@ fn collect_action_steps(
 ) -> Vec<ActionStep> {
     let mut out = Vec::new();
 
-    // The realization defer for `iface` is the one paired with its
-    // `::Internal` carrier — find it via iface_internal_relation.
-    let Some(internal_sym) = eng
-        .iface_internal_relation()
-        .find(|(_, ext)| *ext == iface)
-        .map(|(int, _)| int)
-    else {
+    // The realization defer for `iface` is precomputed in the engine index —
+    // a single HashMap lookup instead of two linear scans per call.
+    let Some(&defer_idx) = eng.index.realization_for_iface.get(&iface) else {
         return out;
     };
-    let Some(realization) = eng
-        .defer_relation()
-        .find(|d| d.source == internal_sym && d.target == iface)
-    else {
-        return out;
-    };
+    let realization = &eng.defers[defer_idx];
 
     for entry in &realization.entries {
         if entry.source_pos != from_pos {
@@ -748,16 +724,18 @@ fn collect_action_paths(
     from_args: &[Expr<Sym>],
     max_depth: Option<usize>,
 ) -> Vec<ReachedPath> {
-    use std::collections::VecDeque;
+    use std::collections::{HashSet, VecDeque};
     use super::eval::const_fold;
+
+    let Some(iface_decl) = eng.interfaces.get(&iface) else { return Vec::new() };
 
     let folded_start: Vec<Expr<Sym>> =
         from_args.iter().map(|e| const_fold(eng, e, env)).collect();
-    let mut visited: Vec<(Sym, Vec<Expr<Sym>>)> = Vec::new();
+    let mut visited: HashSet<(Sym, Vec<Expr<Sym>>)> = HashSet::new();
     let mut queue: VecDeque<ReachedPath> = VecDeque::new();
     let mut out: Vec<ReachedPath> = Vec::new();
 
-    visited.push((from_pos, folded_start.clone()));
+    visited.insert((from_pos, folded_start.clone()));
     queue.push_back(ReachedPath {
         pos: from_pos,
         args: folded_start,
@@ -778,7 +756,6 @@ fn collect_action_paths(
             }
         }
         // Try every named action available at this position.
-        let Some(iface_decl) = eng.interfaces.get(&iface) else { continue };
         let Some(pos_decl) = iface_decl.position(&node.pos) else { continue };
         for dir in &pos_decl.directions {
             for step in collect_action_steps(eng, iface, node.pos, &node.args, dir.name) {
@@ -794,11 +771,9 @@ fn collect_action_paths(
                     .iter()
                     .map(|e| const_fold(eng, e, env))
                     .collect();
-                let key = (step.tgt_pos, folded_args.clone());
-                if visited.iter().any(|v| v == &key) {
+                if !visited.insert((step.tgt_pos, folded_args.clone())) {
                     continue;
                 }
-                visited.push(key);
                 let mut new_path = node.path.clone();
                 new_path.push(dir.name);
                 queue.push_back(ReachedPath {
@@ -1346,7 +1321,7 @@ mod tests {
         let q = decrement_query(&eng);
         let n = eng.interner.find("n").unwrap();
         let mut env = Bindings::default();
-        env.insert(n, super::super::eval::Value::Int(3));
+        env.insert(n, super::super::eval::EnvValue::Int(3));
         let answers: Vec<_> = eng.query(&q, &env).collect();
         assert_eq!(answers.len(), 1);
         assert!(answers[0].residual.is_empty(), "residual should be cleared");
@@ -1358,7 +1333,7 @@ mod tests {
         let q = decrement_query(&eng);
         let n = eng.interner.find("n").unwrap();
         let mut env = Bindings::default();
-        env.insert(n, super::super::eval::Value::Int(0));
+        env.insert(n, super::super::eval::EnvValue::Int(0));
         let answers: Vec<_> = eng.query(&q, &env).collect();
         assert!(answers.is_empty(), "residual `0 > 0` is false; answer should be dropped");
     }
@@ -1413,14 +1388,14 @@ mod tests {
 
         // n=10: both `n > 0` and `n > 5` true → answer kept, residual cleared.
         let mut env = Bindings::default();
-        env.insert(n, super::super::eval::Value::Int(10));
+        env.insert(n, super::super::eval::EnvValue::Int(10));
         let answers: Vec<_> = eng.query(&q, &env).collect();
         assert_eq!(answers.len(), 1);
         assert!(answers[0].residual.is_empty());
 
         // n=3: `n > 0` true but `n > 5` false → answer dropped.
         let mut env = Bindings::default();
-        env.insert(n, super::super::eval::Value::Int(3));
+        env.insert(n, super::super::eval::EnvValue::Int(3));
         let answers: Vec<_> = eng.query(&q, &env).collect();
         assert!(answers.is_empty());
 
@@ -1554,8 +1529,8 @@ mod tests {
         let mut env = Bindings::default();
         let width = eng.interner.find("Width").unwrap();
         let height = eng.interner.find("Height").unwrap();
-        env.insert(width, super::super::eval::Value::Int(w));
-        env.insert(height, super::super::eval::Value::Int(h));
+        env.insert(width, super::super::eval::EnvValue::Int(w));
+        env.insert(height, super::super::eval::EnvValue::Int(h));
         env
     }
 

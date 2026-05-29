@@ -1,4 +1,4 @@
-interface Graph
+system Graph
     A { X -> A, Y -> B },
     B { Z -> A }
 

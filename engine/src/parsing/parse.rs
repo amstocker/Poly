@@ -485,7 +485,12 @@ fn schema_decl() -> impl Parser<char, Schema<String>, Error = Simple<char>> {
             let body = match (fields.is_empty(), variants.is_empty()) {
                 (false, true) => SchemaBody::Record(fields),
                 (true, false) => SchemaBody::Sum(variants),
-                (true, true) => SchemaBody::Sum(Vec::new()),
+                (true, true) => {
+                    return Err(Simple::custom(
+                        span,
+                        format!("schema {name} has no fields or variants"),
+                    ))
+                }
                 (false, false) => {
                     return Err(Simple::custom(
                         span,

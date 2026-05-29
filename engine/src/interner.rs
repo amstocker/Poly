@@ -1,12 +1,16 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Sym(pub(super) u32);
 
+/// String → Sym interner. Each string is allocated exactly once: the same
+/// `Rc<str>` lives in `backward` (for `resolve`) and as the key in `forward`
+/// (for `intern` / `find`).
 #[derive(Clone, Debug, Default)]
 pub struct Interner {
-    forward: HashMap<String, Sym>,
-    backward: Vec<String>,
+    forward: HashMap<Rc<str>, Sym>,
+    backward: Vec<Rc<str>>,
 }
 
 impl Interner {
@@ -19,8 +23,9 @@ impl Interner {
             return sym;
         }
         let sym = Sym(self.backward.len() as u32);
-        self.backward.push(s.to_string());
-        self.forward.insert(s.to_string(), sym);
+        let shared: Rc<str> = Rc::from(s);
+        self.forward.insert(Rc::clone(&shared), sym);
+        self.backward.push(shared);
         sym
     }
 

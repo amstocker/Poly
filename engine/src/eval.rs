@@ -16,9 +16,13 @@ use super::{BinOp, Engine, Expr, SchemaBody, Sym, UnOp};
 // and contradiction detection live in `simplify`, not here.
 // ============================================================================
 
+/// Concrete values supplied to `Engine::query` via `Bindings`. Distinct from
+/// `query::Value`, which is the substitution-side value bound to a logic
+/// variable inside an `Answer`. Two enums, two purposes — the previous shared
+/// name was a footgun in scopes that imported both via `use super::*`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)]
-pub enum Value {
+pub enum EnvValue {
     Int(i64),
     Bool(bool),
     Str(String),
@@ -26,10 +30,10 @@ pub enum Value {
     // const_fold so that `coord.x` simplifies when `coord` is bound to a
     // Coordinate record. Constructed only by callers building a Bindings
     // env with record values.
-    Record { schema: Sym, fields: BTreeMap<Sym, Value> },
+    Record { schema: Sym, fields: BTreeMap<Sym, EnvValue> },
 }
 
-pub type Bindings = BTreeMap<Sym, Value>;
+pub type Bindings = BTreeMap<Sym, EnvValue>;
 
 
 // ============================================================================
@@ -86,17 +90,17 @@ pub fn const_fold(eng: &Engine, e: &Expr<Sym>, b: &Bindings) -> Expr<Sym> {
     }
 }
 
-fn eval_unop(op: UnOp, v: Value) -> Option<Value> {
+fn eval_unop(op: UnOp, v: EnvValue) -> Option<EnvValue> {
     match (op, v) {
-        (UnOp::Neg, Value::Int(n)) => Some(Value::Int(-n)),
-        (UnOp::Not, Value::Bool(p)) => Some(Value::Bool(!p)),
+        (UnOp::Neg, EnvValue::Int(n)) => Some(EnvValue::Int(-n)),
+        (UnOp::Not, EnvValue::Bool(p)) => Some(EnvValue::Bool(!p)),
         _ => None,
     }
 }
 
-fn eval_binop(op: BinOp, l: Value, r: Value) -> Option<Value> {
+fn eval_binop(op: BinOp, l: EnvValue, r: EnvValue) -> Option<EnvValue> {
     use BinOp::*;
-    use Value::*;
+    use EnvValue::*;
     Some(match (op, l, r) {
         (Add, Int(a), Int(b)) => Int(a + b),
         (Sub, Int(a), Int(b)) => Int(a - b),
@@ -116,26 +120,42 @@ fn eval_binop(op: BinOp, l: Value, r: Value) -> Option<Value> {
     })
 }
 
-fn expr_as_value(e: &Expr<Sym>) -> Option<Value> {
+fn expr_as_value(e: &Expr<Sym>) -> Option<EnvValue> {
     match e {
-        Expr::LitInt(n) => Some(Value::Int(*n)),
-        Expr::LitBool(p) => Some(Value::Bool(*p)),
-        Expr::LitStr(s) => Some(Value::Str(s.clone())),
+        Expr::LitInt(n) => Some(EnvValue::Int(*n)),
+        Expr::LitBool(p) => Some(EnvValue::Bool(*p)),
+        Expr::LitStr(s) => Some(EnvValue::Str(s.clone())),
         _ => None,
     }
 }
 
-fn value_to_expr(eng: &Engine, v: &Value) -> Option<Expr<Sym>> {
+fn value_to_expr(eng: &Engine, v: &EnvValue) -> Option<Expr<Sym>> {
     match v {
-        Value::Int(n) => Some(Expr::LitInt(*n)),
-        Value::Bool(p) => Some(Expr::LitBool(*p)),
-        Value::Str(s) => Some(Expr::LitStr(s.clone())),
-        Value::Record { schema, fields } => {
+        EnvValue::Int(n) => Some(Expr::LitInt(*n)),
+        EnvValue::Bool(p) => Some(Expr::LitBool(*p)),
+        EnvValue::Str(s) => Some(Expr::LitStr(s.clone())),
+        EnvValue::Record { schema, fields } => {
             let s = eng.schemas.get(schema)?;
-            let SchemaBody::Record(params) = &s.body else { return None };
+            let SchemaBody::Record(params) = &s.body else {
+                debug_assert!(
+                    false,
+                    "EnvValue::Record schema `{}` is not a record schema",
+                    eng.resolve(*schema),
+                );
+                return None;
+            };
             let args: Option<Vec<Expr<Sym>>> = params
                 .iter()
-                .map(|p| fields.get(&p.name).and_then(|fv| value_to_expr(eng, fv)))
+                .map(|p| {
+                    let fv = fields.get(&p.name);
+                    debug_assert!(
+                        fv.is_some(),
+                        "EnvValue::Record for `{}` is missing field `{}`",
+                        eng.resolve(*schema),
+                        eng.resolve(p.name),
+                    );
+                    fv.and_then(|v| value_to_expr(eng, v))
+                })
                 .collect();
             Some(Expr::Construct(*schema, args?))
         }

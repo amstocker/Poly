@@ -27,6 +27,6 @@ pub(crate) mod relations;
 pub(crate) mod simplify;
 
 pub use engine::{Engine, EngineError};
-pub use eval::Bindings;
+pub use eval::{Bindings, EnvValue};
 pub use interner::{Interner, Sym};
 pub use types::*;

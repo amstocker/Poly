@@ -1,0 +1,16 @@
+interface A
+    X { Z },
+    Y
+
+interface B
+    E { F, G }
+
+interface C
+    R { T },
+    S
+
+defer D: (A, B) -> C
+    (X, E) -> R {
+        T -> (Z, G)
+    },
+    (Y, E) -> S

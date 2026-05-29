@@ -1,4 +1,4 @@
-interface Counter
+system Counter
     Count[n: Int] if (n >= 0) {
         Increment -> Count[n + 1],
         Decrement if (n > 0) -> Count[n - 1]

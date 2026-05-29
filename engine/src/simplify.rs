@@ -16,7 +16,7 @@
 // so it converges in 2–3 iterations on every example we currently produce.
 // =============================================================================
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use super::eval::{const_fold, Bindings};
 use super::*;
@@ -256,17 +256,8 @@ fn conjoin_n(atoms: Vec<Expr<Sym>>) -> Expr<Sym> {
 }
 
 fn dedupe(atoms: &mut Vec<Expr<Sym>>) {
-    // Use Debug repr as the dedup key — Expr doesn't implement Hash/Ord and
-    // the residuals we produce are tiny, so the cost is negligible.
-    let mut seen: BTreeSet<String> = BTreeSet::new();
-    let mut out = Vec::with_capacity(atoms.len());
-    for a in atoms.drain(..) {
-        let key = format!("{a:?}");
-        if seen.insert(key) {
-            out.push(a);
-        }
-    }
-    *atoms = out;
+    let mut seen: HashSet<Expr<Sym>> = HashSet::new();
+    atoms.retain(|a| seen.insert(a.clone()));
 }
 
 fn eq_atom(v: Sym, rhs: Expr<Sym>) -> Expr<Sym> {
@@ -680,7 +671,7 @@ mod tests {
         let eng = load();
         let n = n_sym(&eng);
         let mut env = Bindings::default();
-        env.insert(n, super::super::eval::Value::Int(3));
+        env.insert(n, super::super::eval::EnvValue::Int(3));
         let r = reduce(&eng, &gt(var(n), lit(0)), &env);
         assert_eq!(r, Expr::LitBool(true));
     }

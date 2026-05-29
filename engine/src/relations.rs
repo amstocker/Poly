@@ -11,8 +11,6 @@ use crate::types::{
 };
 use crate::{Engine, Sym};
 
-const INTERNAL_SUFFIX: &str = "::Internal";
-
 impl Engine {
     /// Every loaded interface.
     pub fn iface_relation(&self) -> impl Iterator<Item = &Interface<Sym>> {
@@ -23,12 +21,7 @@ impl Engine {
     /// suffix convention. An interface named `Foo::Internal` is paired
     /// with `Foo` iff `Foo` is also a loaded interface.
     pub fn iface_internal_relation(&self) -> impl Iterator<Item = (Sym, Sym)> + '_ {
-        self.interfaces.values().filter_map(move |iface| {
-            let name = self.resolve(iface.name);
-            let stripped = name.strip_suffix(INTERNAL_SUFFIX)?;
-            let ext_sym = self.interner.find(stripped)?;
-            self.interfaces.contains_key(&ext_sym).then_some((iface.name, ext_sym))
-        })
+        self.index.internal_to_external.iter().map(|(&int, &ext)| (int, ext))
     }
 
     /// `(schema_name, fields)` pairs for record-shaped schemas.

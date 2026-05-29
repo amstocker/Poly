@@ -21,7 +21,7 @@ pub struct Param<T> {
 // Expression AST
 // ============================================================================
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Expr<T> {
     LitInt(i64),
     LitStr(String),
@@ -33,14 +33,14 @@ pub enum Expr<T> {
     Construct(T, Vec<Expr<T>>),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BinOp {
     Add, Sub, Mul, Div, Mod,
     Eq, Neq, Lt, Le, Gt, Ge,
     And, Or,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum UnOp { Neg, Not }
 
 
