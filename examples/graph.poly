@@ -1,4 +1,4 @@
-system Graph
+state Graph
     A { X -> A, Y -> B },
     B { Z -> A }
 

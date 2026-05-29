@@ -1,4 +1,4 @@
-system Counter
+state Counter
     Count[n: Int] if (n >= 0) {
         Increment -> Count[n + 1],
         Decrement if (n > 0) -> Count[n - 1]
@@ -7,7 +7,19 @@ system Counter
 interface Button
     { Press }
 
-defer SetTo10 : Counter::Internal -> Button
-    Count[_] -> {
-        Press -> Count[_] => Count[10]
+# Vastly simplified this syntax...
+#   1.  We don't need to say that `Count[_]` maps to the single
+#       anonymous state because that can be inferred.
+#   2.  We don't need to say the source of the transition because we know
+#       the source state being mapped, so we can just say the new state.
+defer SetTo10 : Counter -> Button
+    { Press -> Count[10] }
+
+interface Button_2
+    X { Press }
+
+# A slightly more verbose example:
+defer SetTo10_2 : Counter -> Button_2
+    Count[_] -> X {
+        Press -> Count[10]
     }

@@ -1,0 +1,14 @@
+state Light
+    Off,
+    On
+
+state System
+    Reading,
+    Writing,
+    Idle
+
+# For state transitions, we already know the source state so we don't actually
+# need to use the `=>` syntax to indicate a transition.
+defer Indicator: System -> Light
+    Idle -> Off,
+    Reading | Writing -> On
