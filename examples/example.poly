@@ -22,7 +22,12 @@ defer TestDefer : Test -> Test2
 
 
 # The `state` block is syntax sugar for defining a polynomial
-# comonad coupled (i.e. a state machine) with a `defer` to an interface.
+# comonad (i.e. a state machine) coupled with a `defer` to an interface.
+# This example implicitly declares an interface with states `A` and `B` where
+# all state transitions are possible, and defers it to another interface
+# where one state has actions `{ X, Y }` and the other only has action `{ Z }`.
+# Thus, this represents an interface where action `Y` must be followed by the
+# action `Z`, and then `Z` can only be followed by `X` or `Y`.
 state Graph
     A { X -> A, Y -> B },
     B { Z -> A }
