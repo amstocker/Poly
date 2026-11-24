@@ -1,0 +1,60 @@
+# Polynomial interfaces are declared by declaring each state,
+# and then all possible actions associated to that state.
+interface Test
+    A { B, C },
+    E { F }
+
+interface Test2
+    W { X, Y, Z }
+
+# We can `defer` from one interface to another (this is a morphism
+# of polynomial functors) by mapping forward on states and
+# backwards on actions.
+defer TestDefer : Test -> Test2
+    A -> W {
+        X | Y -> B,
+        Z -> C
+    },
+    E -> W {
+        X | Y | Z -> F
+    }
+
+# The `state` block is syntax sugar for defining a polynomial
+# comonad coupled (i.e. a state machine) with a `defer` to an interface.
+state Graph
+    A { X -> A, Y -> B },
+    B { Z -> A }
+
+# Here is another example
+state Counter
+    Count[n: Int] if (n >= 0) {
+        Increment -> Count[n + 1],
+        Decrement if (n > 0) -> Count[n - 1]
+    }
+
+# An interface can have a single anonymous state
+interface Button
+    { Press }
+
+# Since the `Increment` action is always possible for `Counter`,
+# this `defer` is well-defined.
+defer Counter -> Button
+    { Press -> Increment }
+
+# This one should be invalid, because the Decrement action is
+# not available in all states!  The Poly runtime should infer this
+# at compile-time and raise an error.
+# 
+# defer Counter -> Button
+#    { Press -> Decrement }
+
+# Instead, we should do this.
+interface StatefulButton
+    Enabled { Press },
+    Disabled
+
+defer DecrementButton: Counter -> StatefulButton
+    Count[0] -> Disabled,
+    Count[n] if (n > 0) -> Enabled {
+        Press -> Decrement
+    }
