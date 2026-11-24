@@ -1,3 +1,6 @@
+# The `state` block is syntax sugar for defining a polynomial
+# comonad coupled with a morphism (i.e. a `defer`) to an interface
+# with actions `Increment` and `Decrement`.
 state Counter
     Count[n: Int] if (n >= 0) {
         Increment -> Count[n + 1],
@@ -7,14 +10,6 @@ state Counter
 # An interface can have a single anonymous state
 interface Button
     { Press }
-
-# Most mimimal syntax...
-#   1.  We don't need to say that `Count[_]` maps to the single
-#       anonymous state because that can be inferred.
-#   2.  We don't need to say the source of the transition because we know
-#       the source state being mapped, so we can just say the new state.
-#   3.  A defer can be anonymous as well.
-defer Counter -> Button { Press -> Count[10] }
 
 # Another defer
 defer Counter -> Button { Press -> Increment }
