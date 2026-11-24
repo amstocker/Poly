@@ -7,6 +7,7 @@ interface Test
 interface Test2
     W { X, Y, Z }
 
+
 # We can `defer` from one interface to another (this is a morphism
 # of polynomial functors) by mapping forward on states and
 # backwards on actions.
@@ -19,11 +20,13 @@ defer TestDefer : Test -> Test2
         X | Y | Z -> F
     }
 
+
 # The `state` block is syntax sugar for defining a polynomial
 # comonad coupled (i.e. a state machine) with a `defer` to an interface.
 state Graph
     A { X -> A, Y -> B },
     B { Z -> A }
+
 
 # Here is another example
 state Counter
@@ -40,6 +43,7 @@ interface Button
 # this `defer` is well-defined.
 defer Counter -> Button
     { Press -> Increment }
+
 
 # This one should be invalid, because the Decrement action is
 # not available in all states!  The Poly runtime should infer this
@@ -58,3 +62,22 @@ defer DecrementButton: Counter -> StatefulButton
     Count[n] if (n > 0) -> Enabled {
         Press -> Decrement
     }
+
+
+# We can also form tensor products by using tuples.
+interface A
+    X { Z },
+    Y
+
+interface B
+    E { F, G }
+
+interface C
+    R { T },
+    S
+
+defer D: (A, B) -> C
+    (X, E) -> R {
+        T -> (Z, G)
+    },
+    (Y, E) -> S
